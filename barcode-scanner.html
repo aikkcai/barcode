@@ -2,61 +2,58 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>前端条形码读取工具</title>
-    <!-- 引入 QuaggaJS 库（CDN 方式，无需本地下载） -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <title>V2.0 前端条形码读取工具</title>
     <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
     <style>
-        /* 整体页面样式 */
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: "Microsoft YaHei", sans-serif;
+            font-family: sans-serif;
         }
 
         body {
-            padding: 2rem;
+            padding: 1rem;
             background-color: #f5f5f5;
             text-align: center;
         }
 
         h1 {
             color: #333;
-            margin-bottom: 2rem;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
         }
 
-        /* 条形码扫描容器 */
         #scanner-container {
-            width: 80%;
-            max-width: 600px;
-            height: 400px;
-            margin: 0 auto 2rem;
+            width: 90%;
+            max-width: 500px;
+            height: 300px; /* 适配手机屏幕高度 */
+            margin: 0 auto 1rem;
             border: 3px solid #2c7be5;
             border-radius: 8px;
             overflow: hidden;
-            background-color: #fff;
+            background-color: #000; /* 黑色背景更清晰 */
             position: relative;
         }
 
-        /* 扫描结果展示区域 */
         #result {
-            width: 80%;
-            max-width: 600px;
-            margin: 0 auto;
+            width: 90%;
+            max-width: 500px;
+            margin: 0 auto 1rem;
             padding: 1rem;
             border-radius: 8px;
             background-color: #fff;
             border: 1px solid #eee;
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: #333;
-            min-height: 50px;
+            min-height: 40px;
+            word-break: break-all; /* 适配长条形码 */
         }
 
-        /* 控制按钮样式 */
         .control-btn {
-            padding: 0.8rem 2rem;
-            margin: 0 0.5rem;
+            padding: 0.8rem 1.5rem;
+            margin: 0 0.3rem;
             border: none;
             border-radius: 4px;
             cursor: pointer;
@@ -69,97 +66,98 @@
             color: #fff;
         }
 
-        #start-scan:hover {
-            background-color: #1a68d1;
-        }
-
         #stop-scan {
             background-color: #e53e3e;
             color: #fff;
         }
 
-        #stop-scan:hover {
-            background-color: #c53030;
-        }
-
-        /* 扫描框提示（可选） */
         .scan-box {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
             width: 80%;
-            height: 100px;
+            height: 80px;
             border: 2px solid #00ff00;
-            box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+            box-shadow: 0 0 8px rgba(0, 255, 0, 0.5);
             pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <h1>前端条形码读取工具</h1>
-
-    <!-- 扫描容器：用于展示摄像头画面和扫描框 -->
+    <h1>条形码扫描工具</h1>
     <div id="scanner-container">
         <div class="scan-box"></div>
     </div>
-
-    <!-- 控制按钮 -->
     <button id="start-scan" class="control-btn">开始扫描</button>
     <button id="stop-scan" class="control-btn" disabled>停止扫描</button>
-
-    <!-- 扫描结果展示 -->
     <div id="result">等待扫描，将条形码对准摄像头...</div>
 
     <script>
-        // 定义全局变量，方便控制扫描状态
         let isScanning = false;
         const scannerContainer = document.getElementById('scanner-container');
         const resultElement = document.getElementById('result');
         const startBtn = document.getElementById('start-scan');
         const stopBtn = document.getElementById('stop-scan');
 
-        // 开始扫描按钮点击事件
+        // 优化后的初始化配置
         startBtn.addEventListener('click', () => {
             if (isScanning) return;
 
-            // 初始化 QuaggaJS
             Quagga.init({
-                // 配置参数
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
-                    target: scannerContainer, // 摄像头画面渲染到这个容器
+                    target: scannerContainer,
                     constraints: {
-                        facingMode: "environment", // 优先使用后置摄像头（手机端），电脑端自动使用默认摄像头
+                        // 兼容不同浏览器的后置摄像头配置
+                        facingMode: (navigator.userAgent.match(/iPhone|iPad|iPod/i)) ? "environment" : { exact: "environment" },
+                        width: { ideal: 1280 }, // 提升摄像头分辨率
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 30 } // 提升帧率，减少卡顿
                     },
+                    // 裁剪扫描区域，只识别中间区域，提升效率
+                    area: {
+                        top: "20%",
+                        right: "10%",
+                        left: "10%",
+                        bottom: "20%"
+                    }
                 },
                 decoder: {
-                    // 支持的条形码格式（常用格式已列出，可根据需求增减）
                     readers: [
                         "code_128_reader",
-                        "ean_reader",
+                        "ean_13_reader", // 明确指定EAN-13（商品条码最常用）
                         "ean_8_reader",
                         "upc_a_reader",
                         "upc_e_reader",
                         "code_39_reader"
                     ],
+                    // 关闭所有debug选项，提升性能
                     debug: {
-                        showCanvas: true,
-                        showPatches: true,
-                        showFoundPatches: true,
-                        showSkeleton: true,
-                        showLabels: true,
-                        showPatchLabels: true,
-                        showRemainingPatchLabels: true,
+                        showCanvas: false,
+                        showPatches: false,
+                        showFoundPatches: false,
+                        showSkeleton: false,
+                        showLabels: false,
+                        showPatchLabels: false,
+                        showRemainingPatchLabels: false,
                         boxFromPatches: {
-                            showTransformed: true,
-                            showTransformedBox: true,
-                            showBB: true
+                            showTransformed: false,
+                            showTransformedBox: false,
+                            showBB: false
                         }
+                    },
+                    // 提升识别灵敏度
+                    multiple: false, // 只识别一个条形码
+                    frequency: 10, // 识别频率（ms），更快响应
+                    config: {
+                        minCodeLength: 6, // 最小条码长度，过滤无效识别
+                        threshold: 0.5 // 降低识别阈值，兼容模糊条码
                     }
                 },
-                locate: true, // 启用定位功能，提高识别准确率
+                locate: true,
+                numOfWorkers: navigator.hardwareConcurrency || 4 // 利用多核CPU
             }, (err) => {
                 if (err) {
                     resultElement.textContent = `初始化失败：${err.message}`;
@@ -167,7 +165,6 @@
                     return;
                 }
 
-                // 初始化成功，开始扫描
                 Quagga.start();
                 isScanning = true;
                 startBtn.disabled = true;
@@ -176,39 +173,44 @@
                 resultElement.style.color = "#333";
             });
 
-            // 绑定条形码识别成功事件
+            // 优化识别回调，增加防抖（避免重复识别）
+            let lastBarcode = "";
+            let debounceTimer = null;
             Quagga.onDetected((result) => {
                 if (result && result.codeResult && result.codeResult.code) {
                     const barcode = result.codeResult.code;
-                    resultElement.textContent = `扫描成功！条形码内容：${barcode}`;
-                    resultElement.style.color = "#28a745";
+                    // 防抖：500ms内只识别一次相同条码
+                    if (barcode !== lastBarcode && !debounceTimer) {
+                        lastBarcode = barcode;
+                        resultElement.textContent = `扫描成功！条形码：${barcode}`;
+                        resultElement.style.color = "#28a745";
+                        // 可选：识别后自动停止
+                        // stopScan();
 
-                    // 可选：识别到条形码后自动停止扫描
-                    // stopScan();
+                        // 重置防抖
+                        debounceTimer = setTimeout(() => {
+                            lastBarcode = "";
+                            debounceTimer = null;
+                        }, 500);
+                    }
                 }
             });
         });
 
-        // 停止扫描按钮点击事件
         stopBtn.addEventListener('click', stopScan);
 
-        // 停止扫描的核心函数
         function stopScan() {
             if (!isScanning) return;
-
             Quagga.stop();
             isScanning = false;
             startBtn.disabled = false;
             stopBtn.disabled = true;
-            resultElement.textContent = "已停止扫描，可点击「开始扫描」重新启动";
+            resultElement.textContent = "已停止扫描，可重新开始";
             resultElement.style.color = "#333";
-
-            // 清空摄像头画面（可选，优化视觉效果）
             const canvasElements = scannerContainer.querySelectorAll('canvas');
             canvasElements.forEach(canvas => canvas.remove());
         }
 
-        // 页面卸载时停止扫描，释放摄像头资源
         window.addEventListener('beforeunload', () => {
             if (isScanning) Quagga.stop();
         });
