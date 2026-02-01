@@ -6,66 +6,89 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
     <style>
+        /* 重置默认样式，避免布局混乱 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            padding: 15px;
+            font-family: Arial, sans-serif;
+        }
+        /* 扫描容器：单独占一行，不影响下方元素 */
+        #scanner-container {
+            width: 100%;
+            max-width: 480px;
+            height: auto;
+            aspect-ratio: 480/320; /* 保持摄像头画面比例 */
+            position: relative; /* 仅作用于内部canvas，不影响外部 */
+            margin: 0 auto 20px auto; /* 居中，下方留足够间距 */
+            border: 1px solid #ddd;
+        }
+        /* 摄像头画布：仅在扫描容器内定位，不超出 */
         canvas.drawing, canvas.drawingBuffer {
             position: absolute;
             left: 0;
             top: 0;
+            width: 100% !important;
+            height: 100% !important;
         }
-        #scanner-container {
-            width: 480px;
-            height: 320px;
-            position: relative;
-            margin-bottom: 20px;
-            /* 适配手机宽度 */
-            max-width: 100%;
-            height: auto;
-            aspect-ratio: 480/320;
+        /* 按钮区域：横向排列，居中 */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            max-width: 480px;
+            margin: 0 auto 15px auto;
+        }
+        #btn, #clear-btn {
+            flex: 1;
+            padding: 12px 0;
+            font-size: 16px;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
         }
         #btn {
-            padding: 10px 20px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-bottom: 15px;
+            background-color: #007bff;
+            color: white;
         }
-        /* textarea样式 */
+        #clear-btn {
+            background-color: #6c757d;
+            color: white;
+        }
+        /* textarea：单独占一行，宽度100%，不被遮挡 */
         #barcode-textarea {
             width: 100%;
-            height: 150px;
-            padding: 10px;
+            max-width: 480px;
+            height: 180px;
+            padding: 12px;
             font-size: 16px;
             border: 1px solid #ccc;
-            border-radius: 4px;
+            border-radius: 6px;
             resize: vertical;
-            margin-bottom: 10px;
-        }
-        /* 清空按钮样式 */
-        #clear-btn {
-            padding: 8px 16px;
-            font-size: 14px;
-            cursor: pointer;
-            background-color: #f0f0f0;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            margin-bottom: 20px;
+            margin: 0 auto;
+            display: block; /* 居中显示 */
+            outline: none;
         }
     </style>
 </head>
 <body>
-    <!-- 扫描区域 -->
+    <!-- 1. 扫描区域（单独一行） -->
     <div id="scanner-container"></div>
     
-    <!-- 控制按钮 -->
-    <input type="button" id="btn" value="Start/Stop the scanner" />
-    <button id="clear-btn">清空条形码</button>
+    <!-- 2. 按钮区域（单独一行） -->
+    <div class="btn-group">
+        <button id="btn">Start/Stop Scanner</button>
+        <button id="clear-btn">Clear Barcodes</button>
+    </div>
     
-    <!-- 新增的textarea用于显示条形码 -->
-    <textarea id="barcode-textarea" placeholder="识别到的条形码会显示在这里..."></textarea>
+    <!-- 3. textarea（单独一行，在最下方，完全不被遮挡） -->
+    <textarea id="barcode-textarea" placeholder="Scanned barcodes will appear here..."></textarea>
 
     <script>
         var _scannerIsRunning = false;
-        // 获取textarea元素
         const barcodeTextarea = document.getElementById('barcode-textarea');
-        // 存储已识别的条形码（避免重复）
         const scannedCodes = new Set();
 
         function startScanner() {
@@ -110,11 +133,9 @@
             }, function (err) {
                 if (err) {
                     console.log(err);
-                    alert("初始化失败：" + err.message);
+                    alert("Initialization failed: " + err.message);
                     return;
                 }
-
-                console.log("Initialization finished. Ready to start");
                 Quagga.start();
                 _scannerIsRunning = true;
             });
@@ -132,49 +153,45 @@
                             Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
                         });
                     }
-
                     if (result.box) {
                         Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: "#00F", lineWidth: 2 });
                     }
-
                     if (result.codeResult && result.codeResult.code) {
                         Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
                     }
                 }
             });
 
-            // 识别到条形码后填充到textarea
             Quagga.onDetected(function (result) {
                 const barcode = result.codeResult.code;
-                // 避免重复添加相同的条形码
                 if (!scannedCodes.has(barcode)) {
                     scannedCodes.add(barcode);
-                    // 拼接条形码，换行展示
                     const currentContent = barcodeTextarea.value.trim();
                     barcodeTextarea.value = currentContent 
                         ? `${currentContent}\n${barcode}` 
                         : barcode;
-                    // 滚动到textarea底部
                     barcodeTextarea.scrollTop = barcodeTextarea.scrollHeight;
                 }
-                console.log("Barcode detected: [" + barcode + "]", result);
+                console.log("Barcode detected: [" + barcode + "]");
             });
         }
 
-        // 启动/停止扫描按钮
+        // 启动/停止扫描
         document.getElementById("btn").addEventListener("click", function () {
             if (_scannerIsRunning) {
                 Quagga.stop();
                 _scannerIsRunning = false;
+                this.textContent = "Start Scanner";
             } else {
                 startScanner();
+                this.textContent = "Stop Scanner";
             }
-        }, false);
+        });
 
-        // 清空textarea按钮
+        // 清空textarea
         document.getElementById("clear-btn").addEventListener("click", function () {
             barcodeTextarea.value = "";
-            scannedCodes.clear(); // 清空已识别的条形码集合
+            scannedCodes.clear();
         });
     </script>
 </body>
