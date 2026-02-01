@@ -3,256 +3,136 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
+<!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
-<style>
-/* 基础样式重置，避免冲突 */
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-body {
-  padding: 10px;
-  font-family: Arial, sans-serif;
-}
-/* 识别类型选择框 */
-.type-select {
-  margin: 10px 0;
-  font-size: 14px;
-}
-/* 摄像头画布：强制显示，设置最小尺寸 */
-#preview {
-  border: 1px solid #ccc;
-  min-width: 320px;
-  min-height: 240px;
-  margin: 10px 0;
-  display: block !important; /* 强制显示 */
-}
-/* 条码表格 */
-.barcode-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 15px 0;
-  font-size: 12px;
-}
-.barcode-table td {
-  border: 1px solid #ddd;
-  padding: 4px 3px;
-  text-align: center;
-  white-space: nowrap;
-}
-/* 高亮样式 */
-.highlight {
-  background-color: #fff3cd;
-  font-weight: bold;
-  color: #d63384;
-}
-/* 结果文本域 */
-#jan {
-  width: 100%;
-  min-height: 100px;
-  padding: 8px;
-  margin-top: 10px;
-}
-h4 {
-  margin: 10px 0 5px 0;
-  font-size: 15px;
-}
-</style>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 var currentReader = "code_128_reader";
+// 新增：创建音频上下文和提示音
 var audioContext;
 
-// 目标条码数组
-const TARGET_BARCODES = [
-  "P005849", "0019885", "0020554", "0020560", "0025095", "0021609", "0025091", "0025111", "0030830", "0033390",
-  "0033393", "0036973", "0036974", "0025115", "0025122", "0030827", "0033384", "0025116", "0025126", "0025127",
-  "0020417", "0020418", "0020419", "0020420", "0020421", "0020422", "0020423", "0020424", "0020425", "0020426",
-  "0020427", "0020428", "0020430", "0020431", "0020432", "0020433", "0020434", "0020435", "0020437", "0020438",
-  "0022517", "0022518", "0022519", "0022520", "0022521", "0022522", "0022523", "0022524", "0044713", "0044714",
-  "0033632", "0033630", "0034128", "0026156", "0033627", "0033624", "0033623", "0033640", "0033638", "0033637",
-  "0036503", "0036504", "0036505", "0036506", "0036287", "0036288", "0036286", "0036289", "0036875", "0036876",
-  "0036074", "0036051", "0026361", "0026362", "0031385", "0031846", "0031845", "0036748", "0032217", "0032469",
-  "0036068", "0019141", "0019145", "0019147", "0019148", "0021619", "0021620", "0017643", "0019944", "0031167",
-  "0031168", "0031175", "0031155", "0031149", "0031170", "0027946", "0027948", "0031221", "0033396", "0033397",
-  "0033398", "0031851", "0031852", "0018142", "0024848", "0024849", "0024854", "0024855", "0024856", "0022287",
-  "0036279", "0036280", "P005403", "P005440", "P005448", "P005438", "P005481", "P005496", "P005502", "0026679",
-  "0031703", "0031758", "0031727", "0031698", "0017591", "0020782", "0022318", "0036282", "0036283", "0036284",
-  "0019954", "0020750", "0023739", "0023740", "0018144", "0019953", "0022234", "0022235", "0026356", "L002365",
-  "0032130", "0033512", "0036310", "0033633", "0022275", "0022276", "0015684", "0022324", "0022333", "0032135", "0032136"
-];
-
 window.addEventListener('load',function(event){
-  // ========== 关键修复：先获取摄像头画布，确保优先渲染 ==========
-  prev = document.getElementById("preview");
-  jan = document.getElementById("jan");
-
-  // 1. 先创建识别类型选择框（放在最顶部）
+  prev=document.getElementById("preview");
+  jan=document.getElementById("jan");
+  
   createBarcodeTypeSelect();
 
-  // 2. 初始化音频
+  // 新增：初始化音频上下文（解决浏览器音频策略限制）
   initAudioContext();
 
-  // 3. 初始化画布上下文
-  prev_ctx = prev.getContext("2d", {willReadFrequently:true});
+  prev_ctx=prev.getContext("2d", {willReadFrequently:true});
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
 
-  // 4. 初始化视频和摄像头
-  video = document.createElement('video');
-  video.setAttribute("autoplay", "");
-  video.setAttribute("muted", "");
-  video.setAttribute("playsinline", "");
-  video.onloadedmetadata = function(e) {
-    video.play();
-  };
+  video=document.createElement('video');
+  video.setAttribute("autoplay","");
+  video.setAttribute("muted","");
+  video.setAttribute("playsinline","");
+  video.onloadedmetadata = function(e){video.play();};
 
-  // 请求摄像头权限
-  navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {facingMode: "environment", width: {ideal: 640}, height: {ideal: 480}}
-  }).then(function(stream) {
+  navigator.mediaDevices.getUserMedia(
+    {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
+  ).then(function(stream){
     video.srcObject = stream;
-    setTimeout(Scan, 500, true);
-  }).catch(function(err) {
-    jan.value += "摄像头启动失败：" + err.message + "\n";
+    setTimeout(Scan,500,true);
+  }).catch(function(err){
+    jan.value+=err+'\n';
   });
 
-  // 5. 最后创建条码表格（放在摄像头下方，避免覆盖）
-  createTargetBarcodeTable();
-
-  // 扫描函数
   function Scan(first){
     if(first){
-      w = video.videoWidth || 640; // 兜底尺寸
-      h = video.videoHeight || 480;
-      prev.width = w;
-      prev.height = h;
+      w=video.videoWidth;
+      h=video.videoHeight;
       prev.style.width = (w/2) + "px";
       prev.style.height = (h/2) + "px";
-      mw = w * 0.5;
-      mh = h * 0.2;
-      x1 = (w - mw)/2;
-      y1 = (h - mh)/2;
+      prev.width = w;
+      prev.height = h;
+      mw=w*0.5;
+      mh=w*0.2;
+      x1=(w-mw)/2;
+      y1=(h-mh)/2;
     }
-    // 强制绘制视频画面
-    prev_ctx.drawImage(video, 0, 0, w, h);
-    // 绘制扫描框
+    prev_ctx.drawImage(video,0,0,w,h);
     prev_ctx.beginPath();
-    prev_ctx.strokeStyle = "rgb(255,0,0)";
-    prev_ctx.lineWidth = 2;
-    prev_ctx.rect(x1, y1, mw, mh);
+    prev_ctx.strokeStyle="rgb(255,0,0)";
+    prev_ctx.lineWidth=2;
+    prev_ctx.rect(x1,y1,mw,mh);
     prev_ctx.stroke();
 
-    tmp.width = mw;
-    tmp.height = mh;
-    tmp_ctx.drawImage(prev, x1, y1, mw, mh, 0, 0, mw, mh);
+    tmp.width=mw;
+    tmp.height=mh;
+    tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
 
     tmp.toBlob(function(blob){
       let reader = new FileReader();
-      reader.onload = function(){
-        let config = {
+      reader.onload=function(){
+        let config={
           decoder: {
             readers: [currentReader],
             multiple: false,
           },
-          locator: {patchSize: "large", halfSample: false},
-          locate: false,
-          src: reader.result,
+          locator:{patchSize:"large",halfSample:false},
+          locate:false,
+          src:reader.result,
         };
-        Quagga.decodeSingle(config, function(){});
-      };
+        Quagga.decodeSingle(config,function(){});
+      }
       reader.readAsDataURL(blob);
     });
-    setTimeout(Scan, 50, false);
+    setTimeout(Scan,50,false);
   }
 
-  // 识别结果处理
   Quagga.onDetected(function (result) {
     const currentCode = result.codeResult.code;
-    if(DetectedCode === currentCode){
+    if(DetectedCode==currentCode){
       DetectedCount++;
     }else{
-      DetectedCount = 0;
-      DetectedCode = currentCode;
+      DetectedCount=0;
+      DetectedCode=currentCode;
     }
-    if(DetectedCount >= 3){
-      jan.value += currentCode + '\n';
-      jan.scrollTop = jan.scrollHeight;
-      highlightMatchedBarcode(currentCode);
+    if(DetectedCount>=3){
+      console.log(result.codeResult.code);
+      jan.value+=currentCode+'\n';
+      jan.scrollTop=jan.scrollHeight;
+      
+      // 新增：识别成功后播放提示音+粤语播报
       playBeepSound();
       speakCantonese(currentCode);
-      DetectedCode = '';
-      DetectedCount = 0;
+
+      DetectedCode='';
+      DetectedCount=0;
     }
   });
 
-  // 创建识别类型选择框
   function createBarcodeTypeSelect() {
     const selectDiv = document.createElement('div');
-    selectDiv.className = 'type-select';
+    selectDiv.style.margin = "10px 0";
+    selectDiv.style.fontSize = "14px";
     selectDiv.innerHTML = `
-      <h4>选择识别类型</h4>
-      <label style="margin-right:15px;">
+      <div style="margin-bottom:5px;">识别类型：</div>
+      <label style="margin-right:10px;">
         <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
       </label>
-      <label style="margin-right:15px;">
+      <label style="margin-right:10px;">
         <input type="radio" name="barcodeType" value="ean_reader"> EAN-13
       </label>
       <label>
         <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
       </label>
     `;
-    // 插入到body最顶部
-    document.body.insertBefore(selectDiv, document.body.firstChild);
+    document.body.insertBefore(selectDiv, prev.parentNode);
 
     document.querySelectorAll('input[name="barcodeType"]').forEach(radio => {
       radio.addEventListener('change', function() {
         currentReader = this.value;
-        DetectedCount = 0;
-        DetectedCode = '';
+        DetectedCount=0;
+        DetectedCode="";
       });
     });
   }
 
-  // 创建条码表格
-  function createTargetBarcodeTable() {
-    const tableWrap = document.createElement('div');
-    tableWrap.innerHTML = '<h4>目标条码列表（匹配变黄）</h4>';
-    const table = document.createElement('table');
-    table.className = 'barcode-table';
-    let row = document.createElement('tr');
-    let cellCount = 0;
-
-    TARGET_BARCODES.forEach((code, index) => {
-      const td = document.createElement('td');
-      td.textContent = code;
-      td.dataset.code = code;
-      row.appendChild(td);
-      cellCount++;
-      if (cellCount >= 6) {
-        table.appendChild(row);
-        row = document.createElement('tr');
-        cellCount = 0;
-      }
-      if (index === TARGET_BARCODES.length - 1 && cellCount > 0) {
-        table.appendChild(row);
-      }
-    });
-    tableWrap.appendChild(table);
-    // 插入到文本域上方
-    document.body.insertBefore(tableWrap, jan.parentNode);
-  }
-
-  // 高亮匹配条码
-  function highlightMatchedBarcode(code) {
-    const targetCell = document.querySelector(`td[data-code="${code}"]`);
-    if (targetCell) targetCell.classList.add('highlight');
-  }
-
-  // 音频相关函数
+  // 新增1：初始化音频上下文（解决浏览器自动播放限制）
   function initAudioContext() {
     try {
       window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -262,36 +142,58 @@ window.addEventListener('load',function(event){
     }
   }
 
+  // 新增2：播放BIT提示音（纯代码生成，无需外部音频文件）
   function playBeepSound() {
     if (!audioContext) return;
-    if (audioContext.state === 'suspended') audioContext.resume();
+    
+    // 重启音频上下文（解决浏览器暂停策略）
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+
+    // 创建440Hz的提示音（BIT声）
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+    
+    oscillator.type = 'sine'; // 正弦波，音质更清脆
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz = A调
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // 音量（0-1）
+    
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
+    
+    // 播放100ms
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.1);
   }
 
+  // 新增3：粤语语音播报条码数字
   function speakCantonese(code) {
-    if (!('speechSynthesis' in window)) return;
+    // 检查浏览器是否支持语音合成
+    if (!('speechSynthesis' in window)) {
+      console.warn("语音合成不支持");
+      return;
+    }
+
+    // 清空之前的播报队列
     window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(`识别到条码：${code}`);
-    utterance.lang = 'yue-HK';
-    utterance.volume = 1;
-    utterance.rate = 0.9;
+
+    // 创建语音播报实例
+    const utterance = new SpeechSynthesisUtterance();
+    utterance.text = `识别到条码：${code}`;
+    utterance.lang = 'yue-HK'; // 粤语（香港）
+    utterance.volume = 1; // 音量（0-1）
+    utterance.rate = 0.9; // 语速（0.1-10）
+    utterance.pitch = 1; // 音调（0-2）
+
+    // 播放语音
     window.speechSynthesis.speak(utterance);
   }
 });
 </script>
 </head>
 <body>
-  <!-- 摄像头画布：放在body靠前位置，优先渲染 -->
-  <canvas id="preview"></canvas>
-  <!-- 结果文本域 -->
-  <textarea id="jan" rows="8" cols="40" placeholder="识别结果会显示在这里..."></textarea>
+  <div><canvas id="preview"></canvas></div>
+  <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
