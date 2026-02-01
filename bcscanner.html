@@ -6,10 +6,8 @@
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <script>
-// 简化变量：仅保留必要的去重集合
-var scannedCodes = new Set(); 
-var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
-
+var DetectedCount=0,DetectedCode="";
+var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 window.addEventListener('load',function(event){
   video=document.createElement('video');
   video.setAttribute("autoplay","");
@@ -22,22 +20,29 @@ window.addEventListener('load',function(event){
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
   jan=document.getElementById("jan");
 
-  // カメラ権限リクエスト
+  // A permission dialog for camera access will appear
   navigator.mediaDevices.getUserMedia(
+    // Microphone off, camera settings: prefer rear camera, prefer 640×480
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
-  ).then(function(stream){
-    video.srcObject = stream;
-    setTimeout(Scan,500,true);
-  }).catch(function(err){
-    jan.value += "カメラ権限エラー：" + err + '\n';
-  });
+  ).then( // When permission is granted
+    function(stream){
+      video.srcObject = stream;
+      // Scan every 0.5 seconds
+      setTimeout(Scan,500,true);
+    }
+  ).catch( // When permission is denied
+    function(err){jan.value+=err+'\n';}
+  );
 
   function Scan(first){
     if(first){
+      // Selected width and height
       w=video.videoWidth;
       h=video.videoHeight;
+      // Display size on screen
       prev.style.width=(w/2)+"px";
       prev.style.height=(h/2)+"px";
+      // Internal canvas size
       prev.setAttribute("width",w);
       prev.setAttribute("height",h);
       mw=w*0.5;
@@ -45,7 +50,6 @@ window.addEventListener('load',function(event){
       x1=(w-mw)/2;
       y1=(h-mh)/2;
     }
-    // 描画カメラ画面とスキャン枠
     prev_ctx.drawImage(video,0,0,w,h);
     prev_ctx.beginPath();
     prev_ctx.strokeStyle="rgb(255,0,0)";
@@ -56,76 +60,46 @@ window.addEventListener('load',function(event){
     tmp.setAttribute("height",mh);
     tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
 
-    // 核心修改1：移除multiple: true（decodeSingle不兼容多码模式）
-    // 改为单次识别单码，但通过循环+去重实现多码连续识别
     tmp.toBlob(function(blob){
       let reader = new FileReader();
       reader.onload=function(){
         let config={
           decoder: {
             readers: ["ean_reader","ean_8_reader"],
-            multiple: false, // 改回false，保证decodeSingle能正常识别
+            multiple: false, // Do not decode multiple barcodes at once
           },
-          locator:{patchSize:"large",halfSample:true}, // 改halfSample为true，提升识别速度
-          locate:true, // 开启定位，帮助识别
+          locator:{patchSize:"large",halfSample:false},
+          locate:false,
           src:reader.result,
         };
-        Quagga.decodeSingle(config, function(result) {
-          // 核心修改2：直接在decodeSingle的回调中处理识别结果（更稳定）
-          if (result && result.codeResult && result.codeResult.code) {
-            handleDetectedCode(result.codeResult.code);
-          }
-        });
+        Quagga.decodeSingle(config,function(){});
       }
       reader.readAsDataURL(blob);
     });
-    setTimeout(Scan, 200, false); // 延长扫描间隔到200ms，减少性能消耗
+    setTimeout(Scan,50,false);
   }
 
-  // 简化的识别处理函数
-  function handleDetectedCode(code) {
-    // 去重：仅添加未识别过的条码
-    if (!scannedCodes.has(code)) {
-      console.log("バーコード認識：", code);
-      jan.value += code + '\n';
-      jan.scrollTop = jan.scrollHeight;
-      scannedCodes.add(code); // 标记为已识别
+  Quagga.onDetected(function (result) {
+    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
+    if(DetectedCode==result.codeResult.code){
+      DetectedCount++;
+    }else{
+      DetectedCount=0;
+      DetectedCode=result.codeResult.code;
     }
-  }
-
-  // 清空按钮
-  document.getElementById('clear-btn').addEventListener('click', function() {
-    jan.value = '';
-    scannedCodes.clear();
+    if(DetectedCount>=3){
+      console.log(result.codeResult.code);
+      jan.value+=result.codeResult.code+'\n';
+      jan.scrollTop=jan.scrollHeight;
+      DetectedCode='';
+      DetectedCount=0;
+    }
   });
 });
 </script>
-<style>
-#preview {
-  margin-bottom: 15px;
-  border: 1px solid #ddd;
-}
-#jan {
-  width: 100%;
-  max-width: 100%;
-  padding: 8px;
-  font-size: 16px;
-  box-sizing: border-box;
-}
-#clear-btn {
-  margin: 10px 0;
-  padding: 8px 16px;
-  font-size: 16px;
-  cursor: pointer;
-  background-color: #f0f0f0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-</style>
 </head>
 <body>
   <div><canvas id="preview"></canvas></div>
-  <button id="clear-btn">SEARCH</button>
   <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
