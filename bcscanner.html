@@ -5,20 +5,72 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
+<style>
+/* 新增：表格样式，适配手机 */
+.barcode-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0;
+  font-size: 14px;
+}
+.barcode-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: center;
+}
+/* 高亮样式：黄色背景 */
+.highlight {
+  background-color: #fff3cd;
+  font-weight: bold;
+}
+/* 表格容器：添加滚动，适配手机 */
+.table-container {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 10px 0;
+}
+/* 其他样式优化 */
+#jan {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 10px;
+}
+#preview {
+  max-width: 100%;
+}
+</style>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 var currentReader = "code_128_reader";
-// 新增：创建音频上下文和提示音
 var audioContext;
+// 新增1：定义条码数组（你的指定列表）
+const TARGET_BARCODES = [
+  "P005849", "0019885", "0020554", "0020560", "0025095", "0021609", "0025091", "0025111", "0030830", "0033390",
+  "0033393", "0036973", "0036974", "0025115", "0025122", "0030827", "0033384", "0025116", "0025126", "0025127",
+  "0020417", "0020418", "0020419", "0020420", "0020421", "0020422", "0020423", "0020424", "0020425", "0020426",
+  "0020427", "0020428", "0020430", "0020431", "0020432", "0020433", "0020434", "0020435", "0020437", "0020438",
+  "0022517", "0022518", "0022519", "0022520", "0022521", "0022522", "0022523", "0022524", "0044713", "0044714",
+  "0033632", "0033630", "0034128", "0026156", "0033627", "0033624", "0033623", "0033640", "0033638", "0033637",
+  "0036503", "0036504", "0036505", "0036506", "0036287", "0036288", "0036286", "0036289", "0036875", "0036876",
+  "0036074", "0036051", "0026361", "0026362", "0031385", "0031846", "0031845", "0036748", "0032217", "0032469",
+  "0036068", "0019141", "0019145", "0019147", "0019148", "0021619", "0021620", "0017643", "0019944", "0031167",
+  "0031168", "0031175", "0031155", "0031149", "0031170", "0027946", "0027948", "0031221", "0033396", "0033397",
+  "0033398", "0031851", "0031852", "0018142", "0024848", "0024849", "0024854", "0024855", "0024856", "0022287",
+  "0036279", "0036280", "P005403", "P005440", "P005448", "P005438", "P005481", "P005496", "P005502", "0026679",
+  "0031703", "0031758", "0031727", "0031698", "0017591", "0020782", "0022318", "0036282", "0036283", "0036284",
+  "0019954", "0020750", "0023739", "0023740", "0018144", "0019953", "0022234", "0022235", "0026356", "L002365",
+  "0032130", "0033512", "0036310", "0033633", "0022275", "0022276", "0015684", "0022324", "0022333", "0032135", "0032136"
+];
 
 window.addEventListener('load',function(event){
   prev=document.getElementById("preview");
   jan=document.getElementById("jan");
   
   createBarcodeTypeSelect();
+  // 新增2：创建条码表格
+  createBarcodeTable();
 
-  // 新增：初始化音频上下文（解决浏览器音频策略限制）
   initAudioContext();
 
   prev_ctx=prev.getContext("2d", {willReadFrequently:true});
@@ -96,7 +148,9 @@ window.addEventListener('load',function(event){
       jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
       
-      // 新增：识别成功后播放提示音+粤语播报
+      // 新增3：识别成功后检查是否在目标列表中，高亮对应单元格
+      highlightMatchedBarcode(currentCode);
+
       playBeepSound();
       speakCantonese(currentCode);
 
@@ -132,7 +186,58 @@ window.addEventListener('load',function(event){
     });
   }
 
-  // 新增1：初始化音频上下文（解决浏览器自动播放限制）
+  // 新增4：创建条码表格（按每行5个条码排版，适配手机）
+  function createBarcodeTable() {
+    const tableContainer = document.createElement('div');
+    tableContainer.className = 'table-container';
+    tableContainer.innerHTML = '<h4 style="margin:5px 0;font-size:15px;">目标条码列表</h4>';
+    
+    const table = document.createElement('table');
+    table.className = 'barcode-table';
+    let row = document.createElement('tr');
+    let cellCount = 0;
+
+    // 遍历条码数组，生成表格单元格
+    TARGET_BARCODES.forEach((code, index) => {
+      const td = document.createElement('td');
+      td.textContent = code;
+      td.dataset.code = code; // 存储条码值到data属性，方便后续匹配
+      row.appendChild(td);
+      cellCount++;
+
+      // 每5个单元格换一行
+      if (cellCount >= 5) {
+        table.appendChild(row);
+        row = document.createElement('tr');
+        cellCount = 0;
+      }
+
+      // 处理最后一行不足5个的情况
+      if (index === TARGET_BARCODES.length - 1 && cellCount > 0) {
+        table.appendChild(row);
+      }
+    });
+
+    tableContainer.appendChild(table);
+    // 插入到类型选择框和摄像头之间
+    const selectDiv = document.querySelector('div[style="margin: 10px 0; font-size: 14px;"]');
+    document.body.insertBefore(tableContainer, selectDiv.nextSibling);
+  }
+
+  // 新增5：高亮匹配的条码单元格
+  function highlightMatchedBarcode(code) {
+    // 查找表格中对应条码的单元格
+    const targetCell = document.querySelector(`td[data-code="${code}"]`);
+    if (targetCell) {
+      // 添加黄色高亮样式
+      targetCell.classList.add('highlight');
+      // 可选：3秒后取消高亮（如需持续高亮可删除此段）
+      // setTimeout(() => {
+      //   targetCell.classList.remove('highlight');
+      // }, 3000);
+    }
+  }
+
   function initAudioContext() {
     try {
       window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -142,51 +247,42 @@ window.addEventListener('load',function(event){
     }
   }
 
-  // 新增2：播放BIT提示音（纯代码生成，无需外部音频文件）
   function playBeepSound() {
     if (!audioContext) return;
     
-    // 重启音频上下文（解决浏览器暂停策略）
     if (audioContext.state === 'suspended') {
       audioContext.resume();
     }
 
-    // 创建440Hz的提示音（BIT声）
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
-    oscillator.type = 'sine'; // 正弦波，音质更清脆
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz = A调
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // 音量（0-1）
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // 播放100ms
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.1);
   }
 
-  // 新增3：粤语语音播报条码数字
   function speakCantonese(code) {
-    // 检查浏览器是否支持语音合成
     if (!('speechSynthesis' in window)) {
       console.warn("语音合成不支持");
       return;
     }
 
-    // 清空之前的播报队列
     window.speechSynthesis.cancel();
 
-    // 创建语音播报实例
     const utterance = new SpeechSynthesisUtterance();
     utterance.text = `识别到条码：${code}`;
-    utterance.lang = 'yue-HK'; // 粤语（香港）
-    utterance.volume = 1; // 音量（0-1）
-    utterance.rate = 0.9; // 语速（0.1-10）
-    utterance.pitch = 1; // 音调（0-2）
+    utterance.lang = 'yue-HK';
+    utterance.volume = 1;
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
 
-    // 播放语音
     window.speechSynthesis.speak(utterance);
   }
 });
