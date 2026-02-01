@@ -101,7 +101,7 @@ window.addEventListener('load',function(event){
         let config={
           decoder: {
             readers: ["ean_reader","ean_8_reader"],
-            multiple: true, // Do not decode multiple barcodes at once
+            multiple: false, // Do not decode multiple barcodes at once
           },
           locator:{patchSize:"large",halfSample:false},
           locate:false,
@@ -142,3 +142,4 @@ window.addEventListener('load',function(event){
 
 Copyright 2026 mam
 Camera
+
