@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -7,8 +6,11 @@
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <script>
-var DetectedCount=0,DetectedCode="";
-var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
+// 1. 重构变量：新增已识别条码集合、当前识别缓存（按条码分组计数）
+var scannedCodes = new Set(); // 已识别的条码（去重）
+var codeCounter = {}; // 每个条码的连续识别计数 { "123456": 2, "789012": 1 }
+var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
+
 window.addEventListener('load',function(event){
   video=document.createElement('video');
   video.setAttribute("autoplay","");
@@ -21,29 +23,22 @@ window.addEventListener('load',function(event){
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
   jan=document.getElementById("jan");
 
-  // A permission dialog for camera access will appear
+  // カメラ権限リクエスト
   navigator.mediaDevices.getUserMedia(
-    // Microphone off, camera settings: prefer rear camera, prefer 640×480
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
-  ).then( // When permission is granted
-    function(stream){
-      video.srcObject = stream;
-      // Scan every 0.5 seconds
-      setTimeout(Scan,500,true);
-    }
-  ).catch( // When permission is denied
-    function(err){jan.value+=err+'\n';}
-  );
+  ).then(function(stream){
+    video.srcObject = stream;
+    setTimeout(Scan,500,true);
+  }).catch(function(err){
+    jan.value += "カメラ権限エラー：" + err + '\n';
+  });
 
   function Scan(first){
     if(first){
-      // Selected width and height
       w=video.videoWidth;
       h=video.videoHeight;
-      // Display size on screen
       prev.style.width=(w/2)+"px";
       prev.style.height=(h/2)+"px";
-      // Internal canvas size
       prev.setAttribute("width",w);
       prev.setAttribute("height",h);
       mw=w*0.5;
@@ -51,6 +46,7 @@ window.addEventListener('load',function(event){
       x1=(w-mw)/2;
       y1=(h-mh)/2;
     }
+    // 描画カメラ画面とスキャン枠
     prev_ctx.drawImage(video,0,0,w,h);
     prev_ctx.beginPath();
     prev_ctx.strokeStyle="rgb(255,0,0)";
@@ -61,13 +57,14 @@ window.addEventListener('load',function(event){
     tmp.setAttribute("height",mh);
     tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
 
+    // 画像を解析してバーコード読み取り
     tmp.toBlob(function(blob){
       let reader = new FileReader();
       reader.onload=function(){
         let config={
           decoder: {
             readers: ["ean_reader","ean_8_reader"],
-            multiple: true, // Do not decode multiple barcodes at once
+            multiple: true, // 複数バーコード認識を有効化
           },
           locator:{patchSize:"large",halfSample:false},
           locate:false,
@@ -77,37 +74,72 @@ window.addEventListener('load',function(event){
       }
       reader.readAsDataURL(blob);
     });
+    // 50msごとにスキャンを継続
     setTimeout(Scan,50,false);
   }
 
+  // 2. 重构识别逻辑：按条码分组计数，去重后添加
   Quagga.onDetected(function (result) {
-    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
-    if(DetectedCode==result.codeResult.code){
-      DetectedCount++;
-    }else{
-      DetectedCount=0;
-      DetectedCode=result.codeResult.code;
+    const currentCode = result.codeResult.code;
+    // スキップ条件：1. 既に認識済みの条码 2. 空の条码
+    if (!currentCode || scannedCodes.has(currentCode)) {
+      return;
     }
-    if(DetectedCount>=3){
-      console.log(result.codeResult.code);
-      jan.value+=result.codeResult.code+'\n';
-      jan.scrollTop=jan.scrollHeight;
-      DetectedCode='';
-      DetectedCount=0;
+
+    // 各条码ごとにカウントを管理（防誤読）
+    if (codeCounter[currentCode]) {
+      codeCounter[currentCode]++; // 同じ条码ならカウント増加
+    } else {
+      // 新しい条码なら、他の条码のカウントをリセットして自身を初期化
+      codeCounter = {};
+      codeCounter[currentCode] = 1;
     }
+
+    // 連続3回同じ条码を認識したら確定
+    if (codeCounter[currentCode] >= 3) {
+      console.log("バーコード確定：", currentCode);
+      jan.value += currentCode + '\n';
+      jan.scrollTop = jan.scrollHeight;
+      scannedCodes.add(currentCode); // 認識済みとして登録（重複防止）
+      codeCounter = {}; // カウンターリセット→次の条码を待機
+    }
+  });
+
+  // 3. 清空按钮功能（追加：便利な操作のため）
+  document.getElementById('clear-btn').addEventListener('click', function() {
+    jan.value = '';
+    scannedCodes.clear();
+    codeCounter = {};
   });
 });
 </script>
+<style>
+/* レイアウト最適化：カメラ画面とtextareaを重ならないように */
+#preview {
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+}
+#jan {
+  width: 100%;
+  max-width: 100%;
+  padding: 8px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+#clear-btn {
+  margin: 10px 0;
+  padding: 8px 16px;
+  font-size: 16px;
+  cursor: pointer;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+</style>
 </head>
 <body>
   <div><canvas id="preview"></canvas></div>
+  <button id="clear-btn">スキャン結果をクリア</button>
   <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
-
-
-Copyright 2026 mam
-Camera
-
-
-
