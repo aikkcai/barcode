@@ -8,6 +8,9 @@
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
+// 新增：存储已识别的条形码，避免重复添加
+var scannedCodes = new Set();
+
 window.addEventListener('load',function(event){
   video=document.createElement('video');
   video.setAttribute("autoplay","");
@@ -20,29 +23,29 @@ window.addEventListener('load',function(event){
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
   jan=document.getElementById("jan");
 
-  // A permission dialog for camera access will appear
+  // カメラアクセスの権限ダイアログが表示されます
   navigator.mediaDevices.getUserMedia(
-    // Microphone off, camera settings: prefer rear camera, prefer 640×480
+    // マイクオフ、カメラ設定：リアカメラ優先、640×480優先
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
-  ).then( // When permission is granted
+  ).then( // 権限が許可された場合
     function(stream){
       video.srcObject = stream;
-      // Scan every 0.5 seconds
+      // 0.5秒ごとにスキャン
       setTimeout(Scan,500,true);
     }
-  ).catch( // When permission is denied
+  ).catch( // 権限が拒否された場合
     function(err){jan.value+=err+'\n';}
   );
 
   function Scan(first){
     if(first){
-      // Selected width and height
+      // 選択された幅と高さ
       w=video.videoWidth;
       h=video.videoHeight;
-      // Display size on screen
+      // 画面上の表示サイズ
       prev.style.width=(w/2)+"px";
       prev.style.height=(h/2)+"px";
-      // Internal canvas size
+      // 内部キャンバスサイズ
       prev.setAttribute("width",w);
       prev.setAttribute("height",h);
       mw=w*0.5;
@@ -66,7 +69,8 @@ window.addEventListener('load',function(event){
         let config={
           decoder: {
             readers: ["ean_reader","ean_8_reader"],
-            multiple: false, // Do not decode multiple barcodes at once
+            multiple: true, // 改：开启多码识别（核心修改）
+            // 保留防误读逻辑，无需关闭multiple
           },
           locator:{patchSize:"large",halfSample:false},
           locate:false,
@@ -80,27 +84,67 @@ window.addEventListener('load',function(event){
   }
 
   Quagga.onDetected(function (result) {
-    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
-    if(DetectedCode==result.codeResult.code){
+    const currentCode = result.codeResult.code;
+    // 改：1. 先判断是否已识别过该条码，避免重复
+    if (scannedCodes.has(currentCode)) return;
+
+    // 改：2. 保留原防误读逻辑（连续3次识别相同码才确认）
+    if(DetectedCode === currentCode){
       DetectedCount++;
     }else{
       DetectedCount=0;
-      DetectedCode=result.codeResult.code;
+      DetectedCode=currentCode;
     }
+
+    // 改：3. 连续3次识别相同且未记录的码，才添加到textarea
     if(DetectedCount>=3){
-      console.log(result.codeResult.code);
-      jan.value+=result.codeResult.code+'\n';
-      jan.scrollTop=jan.scrollHeight;
+      console.log("識別成功：", currentCode);
+      jan.value += currentCode + '\n';
+      jan.scrollTop = jan.scrollHeight;
+      // 改：4. 记录已识别的码，避免重复
+      scannedCodes.add(currentCode);
+      // 改：5. 重置计数，准备识别下一个码
       DetectedCode='';
       DetectedCount=0;
     }
   });
+
+  // 新增：清空按钮功能（可选，方便重置）
+  document.getElementById('clear-btn').addEventListener('click', function() {
+    jan.value = '';
+    scannedCodes.clear(); // 清空已识别的码集合
+    DetectedCode = '';
+    DetectedCount = 0;
+  });
 });
 </script>
+<style>
+  /* 优化布局：避免canvas遮挡textarea */
+  #preview {
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+  }
+  #jan {
+    width: 100%;
+    max-width: 100%;
+    padding: 8px;
+    font-size: 16px;
+  }
+  #clear-btn {
+    margin: 10px 0;
+    padding: 8px 16px;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+</style>
 </head>
 <body>
   <div><canvas id="preview"></canvas></div>
+  <!-- 新增：清空按钮 -->
+  <button id="clear-btn">スキャン結果をクリア</button>
   <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
-
