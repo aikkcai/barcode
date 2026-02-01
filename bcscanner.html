@@ -3,11 +3,22 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
-<!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
+// 新增：存储已识别的条码（去重，区分不同条码）
+var scannedCodes = new Set();
+
+// 可自定义指定需要识别的条码类型（按需增删）
+var SUPPORTED_BARCODES = [
+  "ean_reader",      // EAN-13
+  "ean_8_reader",    // EAN-8
+  "code_128_reader", // Code128（常用物流条码）
+  "upc_reader",      // UPC-A（北美商品条码）
+  "code_39_reader"   // Code39（工业条码）
+];
+
 window.addEventListener('load',function(event){
   video=document.createElement('video');
   video.setAttribute("autoplay","");
@@ -20,29 +31,21 @@ window.addEventListener('load',function(event){
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
   jan=document.getElementById("jan");
 
-  // A permission dialog for camera access will appear
   navigator.mediaDevices.getUserMedia(
-    // Microphone off, camera settings: prefer rear camera, prefer 640×480
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
-  ).then( // When permission is granted
-    function(stream){
-      video.srcObject = stream;
-      // Scan every 0.5 seconds
-      setTimeout(Scan,500,true);
-    }
-  ).catch( // When permission is denied
-    function(err){jan.value+=err+'\n';}
-  );
+  ).then(function(stream){
+    video.srcObject = stream;
+    setTimeout(Scan,500,true);
+  }).catch(function(err){
+    jan.value+=err+'\n';
+  });
 
   function Scan(first){
     if(first){
-      // Selected width and height
       w=video.videoWidth;
       h=video.videoHeight;
-      // Display size on screen
       prev.style.width=(w/2)+"px";
       prev.style.height=(h/2)+"px";
-      // Internal canvas size
       prev.setAttribute("width",w);
       prev.setAttribute("height",h);
       mw=w*0.5;
@@ -65,41 +68,61 @@ window.addEventListener('load',function(event){
       reader.onload=function(){
         let config={
           decoder: {
-            readers: ["ean_reader","ean_8_reader"],
-            multiple: false, // Do not decode multiple barcodes at once
+            readers: SUPPORTED_BARCODES, // 使用自定义的支持条码类型
+            multiple: false,
           },
-          locator:{patchSize:"large",halfSample:false},
-          locate:false,
+          locator:{patchSize:"large",halfSample:true}, // 优化识别率
+          locate:true, // 开启定位，提升识别速度
           src:reader.result,
         };
         Quagga.decodeSingle(config,function(){});
       }
       reader.readAsDataURL(blob);
     });
-    setTimeout(Scan,50,false);
+    setTimeout(Scan, 200, false); // 延长间隔，适配手机性能
   }
 
   Quagga.onDetected(function (result) {
-    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
-    if(DetectedCode==result.codeResult.code){
+    const currentCode = result.codeResult.code;
+    // 新增：跳过已识别过的不同条码（核心区分逻辑）
+    if (scannedCodes.has(currentCode)) return;
+
+    // 保留原防误读逻辑
+    if(DetectedCode===currentCode){
       DetectedCount++;
     }else{
       DetectedCount=0;
-      DetectedCode=result.codeResult.code;
+      DetectedCode=currentCode;
     }
+
     if(DetectedCount>=3){
-      console.log(result.codeResult.code);
-      jan.value+=result.codeResult.code+'\n';
+      console.log("识别到新条码：", currentCode);
+      jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
+      scannedCodes.add(currentCode); // 标记为已识别，避免重复
       DetectedCode='';
       DetectedCount=0;
     }
   });
+
+  // 新增：清空按钮，重置已识别的不同条码
+  document.getElementById('clear-btn').addEventListener('click', function() {
+    jan.value = '';
+    scannedCodes.clear();
+    DetectedCode = '';
+    DetectedCount = 0;
+  });
 });
 </script>
+<style>
+#preview {margin-bottom: 15px; border: 1px solid #ddd;}
+#jan {width: 100%; padding: 8px; font-size: 16px; box-sizing: border-box;}
+#clear-btn {margin: 10px 0; padding: 8px 16px; font-size: 16px; cursor: pointer;}
+</style>
 </head>
 <body>
   <div><canvas id="preview"></canvas></div>
+  <button id="clear-btn">スキャン結果をクリア</button>
   <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
