@@ -14,7 +14,7 @@ body {padding: 15px; font-family: Arial, sans-serif;}
   border: 1px solid #ddd;
   max-width: 100%;
 }
-/* 条码类型选择区样式 */
+/* 条码类型提示区（仅显示当前识别类型） */
 .barcode-types {
   margin: 15px 0;
   padding: 10px;
@@ -26,13 +26,9 @@ body {padding: 15px; font-family: Arial, sans-serif;}
   font-size: 16px;
   color: #333;
 }
-.type-item {
-  display: flex;
-  align-items: center;
-  margin: 5px 0;
-}
-.type-item input {
-  margin-right: 8px;
+.type-tip {
+  color: #666;
+  font-size: 14px;
 }
 /* 按钮样式 */
 .btn-group {
@@ -64,17 +60,8 @@ body {padding: 15px; font-family: Arial, sans-serif;}
 var DetectedCount=0, DetectedCode="";
 var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
 var scannedCodes = new Set(); // 已识别的条码（去重）
-var selectedReaders = []; // 存储选中的条码类型
-
-// 定义所有可选的条码类型（名称+对应Quagga识别器）
-const BARCODE_TYPES = [
-  { label: "EAN-13（商品条码）", value: "ean_reader" },
-  { label: "EAN-8（短商品条码）", value: "ean_8_reader" },
-  { label: "Code128（物流条码）", value: "code_128_reader" },
-  { label: "UPC-A（北美商品条码）", value: "upc_reader" },
-  { label: "Code39（工业条码）", value: "code_39_reader" },
-  { label: "Codabar（图书馆/血库）", value: "codabar_reader" }
-];
+// 固定只识别Code128，无需动态选择
+var selectedReaders = ["code_128_reader"];
 
 window.addEventListener('load',function(event){
   // 初始化DOM元素
@@ -83,9 +70,6 @@ window.addEventListener('load',function(event){
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
   jan = document.getElementById("jan");
-
-  // 渲染条码类型选择框
-  renderBarcodeTypeOptions();
 
   // 初始化摄像头
   initCamera();
@@ -98,36 +82,6 @@ window.addEventListener('load',function(event){
     DetectedCount = 0;
   });
 });
-
-// 渲染条码类型选择选项
-function renderBarcodeTypeOptions() {
-  const typeContainer = document.getElementById('barcode-type-container');
-  BARCODE_TYPES.forEach(type => {
-    const item = document.createElement('div');
-    item.className = 'type-item';
-    item.innerHTML = `
-      <input type="checkbox" id="type-${type.value}" value="${type.value}" checked>
-      <label for="type-${type.value}">${type.label}</label>
-    `;
-    // 勾选/取消勾选时更新选中的识别器列表
-    item.querySelector('input').addEventListener('change', updateSelectedReaders);
-    typeContainer.appendChild(item);
-  });
-  // 初始化选中的识别器（默认全选）
-  updateSelectedReaders();
-}
-
-// 更新选中的条码类型列表
-function updateSelectedReaders() {
-  selectedReaders = [];
-  BARCODE_TYPES.forEach(type => {
-    const checkbox = document.getElementById(`type-${type.value}`);
-    if (checkbox.checked) {
-      selectedReaders.push(type.value);
-    }
-  });
-  console.log("当前选中的条码类型：", selectedReaders);
-}
 
 // 初始化摄像头
 function initCamera() {
@@ -179,13 +133,9 @@ function Scan(first){
   tmp.toBlob(function(blob){
     let reader = new FileReader();
     reader.onload = function(){
-      // 仅当选中了条码类型时才识别
-      if (selectedReaders.length === 0) {
-        return; // 未选中任何类型，跳过识别
-      }
       let config = {
         decoder: {
-          readers: selectedReaders, // 使用选中的条码类型
+          readers: selectedReaders, // 固定使用Code128识别器
           multiple: false
         },
         locator: {patchSize:"large", halfSample:true},
@@ -215,7 +165,7 @@ Quagga.onDetected(function (result) {
   }
 
   if(DetectedCount >= 3){
-    console.log("识别到条码：", currentCode);
+    console.log("识别到Code128条码：", currentCode);
     jan.value += currentCode + '\n';
     jan.scrollTop = jan.scrollHeight;
     scannedCodes.add(currentCode);
@@ -229,10 +179,10 @@ Quagga.onDetected(function (result) {
   <!-- 摄像头预览区 -->
   <div><canvas id="preview"></canvas></div>
 
-  <!-- 条码类型选择区 -->
+  <!-- 条码类型提示（仅显示当前识别类型） -->
   <div class="barcode-types">
-    <h4>选择要识别的条码类型：</h4>
-    <div id="barcode-type-container"></div>
+    <h4>当前识别类型：</h4>
+    <div class="type-tip">Code128（物流条码）</div>
   </div>
 
   <!-- 功能按钮 -->
@@ -241,6 +191,6 @@ Quagga.onDetected(function (result) {
   </div>
 
   <!-- 结果显示区 -->
-  <textarea id="jan" rows="8" cols="40" placeholder="扫描到的条码会显示在这里..."></textarea>
+  <textarea id="jan" rows="8" cols="40" placeholder="扫描到的Code128条码会显示在这里..."></textarea>
 </body>
 </html>
