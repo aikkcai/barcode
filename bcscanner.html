@@ -5,32 +5,110 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
+<style>
+/* 基础样式：确保摄像头和表格不冲突 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  padding: 10px;
+  font-family: Arial, sans-serif;
+}
+/* 识别类型选择框样式 */
+.type-select {
+  margin: 10px 0;
+  font-size: 14px;
+}
+/* 摄像头画布：强制显示，避免消失 */
+#preview {
+  border: 1px solid #ccc;
+  min-width: 320px;
+  min-height: 240px;
+  margin: 10px 0;
+  display: block !important;
+}
+/* 目标条码表格样式：完整展示，适配手机 */
+.target-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 15px 0;
+  font-size: 12px;
+}
+.target-table td {
+  border: 1px solid #ddd;
+  padding: 5px 4px;
+  text-align: center;
+  white-space: nowrap; /* 防止条码换行 */
+}
+/* 匹配高亮样式：黄色背景 */
+.target-table td.highlight {
+  background-color: #fff3cd !important;
+  font-weight: bold;
+  color: #d63384;
+}
+/* 结果文本域样式 */
+#jan {
+  width: 100%;
+  min-height: 100px;
+  padding: 8px;
+  margin-top: 10px;
+}
+h4 {
+  margin: 10px 0 5px 0;
+  font-size: 15px;
+}
+</style>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 var currentReader = "code_128_reader";
-// 新增：创建音频上下文和提示音
 var audioContext;
 
+// 1. 定义目标条码数组（完整列表）
+const TARGET_BARCODES = [
+  "P005849", "0019885", "0020554", "0020560", "0025095", "0021609", "0025091", "0025111", "0030830", "0033390",
+  "0033393", "0036973", "0036974", "0025115", "0025122", "0030827", "0033384", "0025116", "0025126", "0025127",
+  "0020417", "0020418", "0020419", "0020420", "0020421", "0020422", "0020423", "0020424", "0020425", "0020426",
+  "0020427", "0020428", "0020430", "0020431", "0020432", "0020433", "0020434", "0020435", "0020437", "0020438",
+  "0022517", "0022518", "0022519", "0022520", "0022521", "0022522", "0022523", "0022524", "0044713", "0044714",
+  "0033632", "0033630", "0034128", "0026156", "0033627", "0033624", "0033623", "0033640", "0033638", "0033637",
+  "0036503", "0036504", "0036505", "0036506", "0036287", "0036288", "0036286", "0036289", "0036875", "0036876",
+  "0036074", "0036051", "0026361", "0026362", "0031385", "0031846", "0031845", "0036748", "0032217", "0032469",
+  "0036068", "0019141", "0019145", "0019147", "0019148", "0021619", "0021620", "0017643", "0019944", "0031167",
+  "0031168", "0031175", "0031155", "0031149", "0031170", "0027946", "0027948", "0031221", "0033396", "0033397",
+  "0033398", "0031851", "0031852", "0018142", "0024848", "0024849", "0024854", "0024855", "0024856", "0022287",
+  "0036279", "0036280", "P005403", "P005440", "P005448", "P005438", "P005481", "P005496", "P005502", "0026679",
+  "0031703", "0031758", "0031727", "0031698", "0017591", "0020782", "0022318", "0036282", "0036283", "0036284",
+  "0019954", "0020750", "0023739", "0023740", "0018144", "0019953", "0022234", "0022235", "0026356", "L002365",
+  "0032130", "0033512", "0036310", "0033633", "0022275", "0022276", "0015684", "0022324", "0022333", "0032135", "0032136"
+];
+
 window.addEventListener('load',function(event){
+  // 优先获取摄像头画布，确保渲染优先级
   prev=document.getElementById("preview");
   jan=document.getElementById("jan");
   
+  // 创建识别类型选择框
   createBarcodeTypeSelect();
 
-  // 新增：初始化音频上下文（解决浏览器音频策略限制）
+  // 初始化音频上下文
   initAudioContext();
 
+  // 初始化画布上下文
   prev_ctx=prev.getContext("2d", {willReadFrequently:true});
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
 
+  // 初始化视频元素
   video=document.createElement('video');
   video.setAttribute("autoplay","");
   video.setAttribute("muted","");
   video.setAttribute("playsinline","");
   video.onloadedmetadata = function(e){video.play();};
 
+  // 请求摄像头权限
   navigator.mediaDevices.getUserMedia(
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
   ).then(function(stream){
@@ -40,10 +118,15 @@ window.addEventListener('load',function(event){
     jan.value+=err+'\n';
   });
 
+  // 最后创建目标条码表格（避免覆盖摄像头）
+  createTargetBarcodeTable();
+
+  // 扫描核心函数
   function Scan(first){
     if(first){
-      w=video.videoWidth;
-      h=video.videoHeight;
+      // 兜底尺寸：防止摄像头未加载时尺寸为0
+      w=video.videoWidth || 640;
+      h=video.videoHeight || 480;
       prev.style.width = (w/2) + "px";
       prev.style.height = (h/2) + "px";
       prev.width = w;
@@ -53,13 +136,16 @@ window.addEventListener('load',function(event){
       x1=(w-mw)/2;
       y1=(h-mh)/2;
     }
+    // 强制绘制摄像头画面
     prev_ctx.drawImage(video,0,0,w,h);
+    // 绘制红色扫描框
     prev_ctx.beginPath();
     prev_ctx.strokeStyle="rgb(255,0,0)";
     prev_ctx.lineWidth=2;
     prev_ctx.rect(x1,y1,mw,mh);
     prev_ctx.stroke();
 
+    // 裁剪扫描区域并识别
     tmp.width=mw;
     tmp.height=mh;
     tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
@@ -83,6 +169,7 @@ window.addEventListener('load',function(event){
     setTimeout(Scan,50,false);
   }
 
+  // 识别结果处理
   Quagga.onDetected(function (result) {
     const currentCode = result.codeResult.code;
     if(DetectedCode==currentCode){
@@ -96,7 +183,9 @@ window.addEventListener('load',function(event){
       jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
       
-      // 新增：识别成功后播放提示音+粤语播报
+      // 识别成功后：高亮表格中匹配的条码
+      highlightMatchedBarcode(currentCode);
+      // 播放提示音+粤语播报
       playBeepSound();
       speakCantonese(currentCode);
 
@@ -105,12 +194,12 @@ window.addEventListener('load',function(event){
     }
   });
 
+  // 创建识别类型选择框
   function createBarcodeTypeSelect() {
     const selectDiv = document.createElement('div');
-    selectDiv.style.margin = "10px 0";
-    selectDiv.style.fontSize = "14px";
+    selectDiv.className = 'type-select';
     selectDiv.innerHTML = `
-      <div style="margin-bottom:5px;">识别类型：</div>
+      <h4>选择识别类型</h4>
       <label style="margin-right:10px;">
         <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
       </label>
@@ -121,7 +210,8 @@ window.addEventListener('load',function(event){
         <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
       </label>
     `;
-    document.body.insertBefore(selectDiv, prev.parentNode);
+    // 插入到body最顶部
+    document.body.insertBefore(selectDiv, document.body.firstChild);
 
     document.querySelectorAll('input[name="barcodeType"]').forEach(radio => {
       radio.addEventListener('change', function() {
@@ -132,7 +222,54 @@ window.addEventListener('load',function(event){
     });
   }
 
-  // 新增1：初始化音频上下文（解决浏览器自动播放限制）
+  // 2. 创建目标条码表格（完整展示）
+  function createTargetBarcodeTable() {
+    // 创建表格容器
+    const tableContainer = document.createElement('div');
+    tableContainer.innerHTML = '<h4>目标条码列表（识别匹配后变黄）</h4>';
+    
+    // 创建表格
+    const table = document.createElement('table');
+    table.className = 'target-table';
+    let row = document.createElement('tr');
+    let cellCount = 0;
+
+    // 遍历条码数组生成单元格
+    TARGET_BARCODES.forEach((code, index) => {
+      const td = document.createElement('td');
+      td.textContent = code;
+      td.dataset.code = code; // 存储条码值用于匹配
+      row.appendChild(td);
+      cellCount++;
+
+      // 每行显示6个条码（适配手机屏幕）
+      if (cellCount >= 6) {
+        table.appendChild(row);
+        row = document.createElement('tr');
+        cellCount = 0;
+      }
+
+      // 处理最后一行剩余条码
+      if (index === TARGET_BARCODES.length - 1 && cellCount > 0) {
+        table.appendChild(row);
+      }
+    });
+
+    tableContainer.appendChild(table);
+    // 插入到摄像头下方、文本域上方
+    document.body.insertBefore(tableContainer, jan.parentNode);
+  }
+
+  // 3. 高亮匹配的条码单元格（背景变黄）
+  function highlightMatchedBarcode(code) {
+    // 根据条码值查找对应的单元格
+    const targetCell = document.querySelector(`td[data-code="${code}"]`);
+    if (targetCell) {
+      targetCell.classList.add('highlight'); // 添加黄色背景样式
+    }
+  }
+
+  // 音频相关函数（保留原有功能）
   function initAudioContext() {
     try {
       window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -142,58 +279,51 @@ window.addEventListener('load',function(event){
     }
   }
 
-  // 新增2：播放BIT提示音（纯代码生成，无需外部音频文件）
   function playBeepSound() {
     if (!audioContext) return;
     
-    // 重启音频上下文（解决浏览器暂停策略）
     if (audioContext.state === 'suspended') {
       audioContext.resume();
     }
 
-    // 创建440Hz的提示音（BIT声）
     const oscillator = audioContext.createOscillator();
     const gainNode = audioContext.createGain();
     
-    oscillator.type = 'sine'; // 正弦波，音质更清脆
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz = A调
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // 音量（0-1）
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
     
     oscillator.connect(gainNode);
     gainNode.connect(audioContext.destination);
     
-    // 播放100ms
     oscillator.start();
     oscillator.stop(audioContext.currentTime + 0.1);
   }
 
-  // 新增3：粤语语音播报条码数字
   function speakCantonese(code) {
-    // 检查浏览器是否支持语音合成
     if (!('speechSynthesis' in window)) {
       console.warn("语音合成不支持");
       return;
     }
 
-    // 清空之前的播报队列
     window.speechSynthesis.cancel();
 
-    // 创建语音播报实例
     const utterance = new SpeechSynthesisUtterance();
     utterance.text = `识别到条码：${code}`;
-    utterance.lang = 'yue-HK'; // 粤语（香港）
-    utterance.volume = 1; // 音量（0-1）
-    utterance.rate = 0.9; // 语速（0.1-10）
-    utterance.pitch = 1; // 音调（0-2）
+    utterance.lang = 'yue-HK';
+    utterance.volume = 1;
+    utterance.rate = 0.9;
+    utterance.pitch = 1;
 
-    // 播放语音
     window.speechSynthesis.speak(utterance);
   }
 });
 </script>
 </head>
 <body>
-  <div><canvas id="preview"></canvas></div>
-  <textarea id="jan" rows="8" cols="40"></textarea>
+  <!-- 摄像头画布：优先渲染，避免被覆盖 -->
+  <canvas id="preview"></canvas>
+  <!-- 识别结果文本域 -->
+  <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
 </body>
 </html>
