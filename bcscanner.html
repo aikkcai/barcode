@@ -1,198 +1,105 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-    <title>Barcode Scanner</title>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
-    <style>
-        /* 重置默认样式，避免布局混乱 */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            padding: 15px;
-            font-family: Arial, sans-serif;
-        }
-        /* 扫描容器：单独占一行，不影响下方元素 */
-        #scanner-container {
-            width: 100%;
-            max-width: 480px;
-            height: auto;
-            aspect-ratio: 480/320; /* 保持摄像头画面比例 */
-            position: relative; /* 仅作用于内部canvas，不影响外部 */
-            margin: 0 auto 20px auto; /* 居中，下方留足够间距 */
-            border: 1px solid #ddd;
-        }
-        /* 摄像头画布：仅在扫描容器内定位，不超出 */
-        canvas.drawing, canvas.drawingBuffer {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100% !important;
-            height: 100% !important;
-        }
-        /* 按钮区域：横向排列，居中 */
-        .btn-group {
-            display: flex;
-            gap: 10px;
-            max-width: 480px;
-            margin: 0 auto 15px auto;
-        }
-        #btn, #clear-btn {
-            flex: 1;
-            padding: 12px 0;
-            font-size: 16px;
-            cursor: pointer;
-            border: none;
-            border-radius: 6px;
-        }
-        #btn {
-            background-color: #007bff;
-            color: white;
-        }
-        #clear-btn {
-            background-color: #6c757d;
-            color: white;
-        }
-        /* textarea：单独占一行，宽度100%，不被遮挡 */
-        #barcode-textarea {
-            width: 100%;
-            max-width: 480px;
-            height: 180px;
-            padding: 12px;
-            font-size: 16px;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            resize: vertical;
-            margin: 0 auto;
-            display: block; /* 居中显示 */
-            outline: none;
-        }
-    </style>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
+<!-- quaggaJSの読み込み -->
+<script src="./quagga.min.js"></script>
+<script>
+var DetectedCount=0,DetectedCode="";
+var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
+window.addEventListener('load',function(event){
+  video=document.createElement('video');
+  video.setAttribute("autoplay","");
+  video.setAttribute("muted","");
+  video.setAttribute("playsinline","");
+  video.onloadedmetadata = function(e){video.play();};
+  prev=document.getElementById("preview");
+  prev_ctx=prev.getContext("2d", {willReadFrequently:true});
+  tmp = document.createElement('canvas');
+  tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
+  jan=document.getElementById("jan");
+
+  // A permission dialog for camera access will appear
+  navigator.mediaDevices.getUserMedia(
+    // Microphone off, camera settings: prefer rear camera, prefer 640×480
+    {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
+  ).then( // When permission is granted
+    function(stream){
+      video.srcObject = stream;
+      // Scan every 0.5 seconds
+      setTimeout(Scan,500,true);
+    }
+  ).catch( // When permission is denied
+    function(err){jan.value+=err+'\n';}
+  );
+
+  function Scan(first){
+    if(first){
+      // Selected width and height
+      w=video.videoWidth;
+      h=video.videoHeight;
+      // Display size on screen
+      prev.style.width=(w/2)+"px";
+      prev.style.height=(h/2)+"px";
+      // Internal canvas size
+      prev.setAttribute("width",w);
+      prev.setAttribute("height",h);
+      mw=w*0.5;
+      mh=w*0.2;
+      x1=(w-mw)/2;
+      y1=(h-mh)/2;
+    }
+    prev_ctx.drawImage(video,0,0,w,h);
+    prev_ctx.beginPath();
+    prev_ctx.strokeStyle="rgb(255,0,0)";
+    prev_ctx.lineWidth=2;
+    prev_ctx.rect(x1,y1,mw,mh);
+    prev_ctx.stroke();
+    tmp.setAttribute("width",mw);
+    tmp.setAttribute("height",mh);
+    tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
+
+    tmp.toBlob(function(blob){
+      let reader = new FileReader();
+      reader.onload=function(){
+        let config={
+          decoder: {
+            readers: ["ean_reader","ean_8_reader"],
+            multiple: false, // Do not decode multiple barcodes at once
+          },
+          locator:{patchSize:"large",halfSample:false},
+          locate:false,
+          src:reader.result,
+        };
+        Quagga.decodeSingle(config,function(){});
+      }
+      reader.readAsDataURL(blob);
+    });
+    setTimeout(Scan,50,false);
+  }
+
+  Quagga.onDetected(function (result) {
+    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
+    if(DetectedCode==result.codeResult.code){
+      DetectedCount++;
+    }else{
+      DetectedCount=0;
+      DetectedCode=result.codeResult.code;
+    }
+    if(DetectedCount>=3){
+      console.log(result.codeResult.code);
+      jan.value+=result.codeResult.code+'\n';
+      jan.scrollTop=jan.scrollHeight;
+      DetectedCode='';
+      DetectedCount=0;
+    }
+  });
+});
+</script>
 </head>
 <body>
-    <!-- 1. 扫描区域（单独一行） -->
-    <div id="scanner-container"></div>
-    
-    <!-- 2. 按钮区域（单独一行） -->
-    <div class="btn-group">
-        <button id="btn">Start/Stop Scanner</button>
-        <button id="clear-btn">Clear Barcodes</button>
-    </div>
-    
-    <!-- 3. textarea（单独一行，在最下方，完全不被遮挡） -->
-    <textarea id="barcode-textarea" placeholder="Scanned barcodes will appear here..."></textarea>
-
-    <script>
-        var _scannerIsRunning = false;
-        const barcodeTextarea = document.getElementById('barcode-textarea');
-        const scannedCodes = new Set();
-
-        function startScanner() {
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector('#scanner-container'),
-                    constraints: {
-                        width: 480,
-                        height: 320,
-                        facingMode: "environment" // 后置摄像头
-                    },
-                },
-                decoder: {
-                    readers: [
-                        "code_128_reader",
-                        "ean_reader",
-                        "ean_8_reader",
-                        "code_39_reader",
-                        "code_39_vin_reader",
-                        "codabar_reader",
-                        "upc_reader",
-                        "upc_e_reader",
-                        "i2of5_reader"
-                    ],
-                    debug: {
-                        showCanvas: true,
-                        showPatches: true,
-                        showFoundPatches: true,
-                        showSkeleton: true,
-                        showLabels: true,
-                        showPatchLabels: true,
-                        showRemainingPatchLabels: true,
-                        boxFromPatches: {
-                            showTransformed: true,
-                            showTransformedBox: true,
-                            showBB: true
-                        }
-                    }
-                },
-            }, function (err) {
-                if (err) {
-                    console.log(err);
-                    alert("Initialization failed: " + err.message);
-                    return;
-                }
-                Quagga.start();
-                _scannerIsRunning = true;
-            });
-
-            Quagga.onProcessed(function (result) {
-                var drawingCtx = Quagga.canvas.ctx.overlay,
-                drawingCanvas = Quagga.canvas.dom.overlay;
-
-                if (result) {
-                    if (result.boxes) {
-                        drawingCtx.clearRect(0, 0, parseInt(drawingCanvas.getAttribute("width")), parseInt(drawingCanvas.getAttribute("height")));
-                        result.boxes.filter(function (box) {
-                            return box !== result.box;
-                        }).forEach(function (box) {
-                            Quagga.ImageDebug.drawPath(box, { x: 0, y: 1 }, drawingCtx, { color: "green", lineWidth: 2 });
-                        });
-                    }
-                    if (result.box) {
-                        Quagga.ImageDebug.drawPath(result.box, { x: 0, y: 1 }, drawingCtx, { color: "#00F", lineWidth: 2 });
-                    }
-                    if (result.codeResult && result.codeResult.code) {
-                        Quagga.ImageDebug.drawPath(result.line, { x: 'x', y: 'y' }, drawingCtx, { color: 'red', lineWidth: 3 });
-                    }
-                }
-            });
-
-            Quagga.onDetected(function (result) {
-                const barcode = result.codeResult.code;
-                if (!scannedCodes.has(barcode)) {
-                    scannedCodes.add(barcode);
-                    const currentContent = barcodeTextarea.value.trim();
-                    barcodeTextarea.value = currentContent 
-                        ? `${currentContent}\n${barcode}` 
-                        : barcode;
-                    barcodeTextarea.scrollTop = barcodeTextarea.scrollHeight;
-                }
-                console.log("Barcode detected: [" + barcode + "]");
-            });
-        }
-
-        // 启动/停止扫描
-        document.getElementById("btn").addEventListener("click", function () {
-            if (_scannerIsRunning) {
-                Quagga.stop();
-                _scannerIsRunning = false;
-                this.textContent = "Start Scanner";
-            } else {
-                startScanner();
-                this.textContent = "Stop Scanner";
-            }
-        });
-
-        // 清空textarea
-        document.getElementById("clear-btn").addEventListener("click", function () {
-            barcodeTextarea.value = "";
-            scannedCodes.clear();
-        });
-    </script>
+  <div><canvas id="preview"></canvas></div>
+  <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
