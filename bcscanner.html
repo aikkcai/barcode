@@ -6,9 +6,8 @@
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <script>
-// 1. 重构变量：新增已识别条码集合、当前识别缓存（按条码分组计数）
-var scannedCodes = new Set(); // 已识别的条码（去重）
-var codeCounter = {}; // 每个条码的连续识别计数 { "123456": 2, "789012": 1 }
+// 简化变量：仅保留必要的去重集合
+var scannedCodes = new Set(); 
 var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
 
 window.addEventListener('load',function(event){
@@ -57,64 +56,51 @@ window.addEventListener('load',function(event){
     tmp.setAttribute("height",mh);
     tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
 
-    // 画像を解析してバーコード読み取り
+    // 核心修改1：移除multiple: true（decodeSingle不兼容多码模式）
+    // 改为单次识别单码，但通过循环+去重实现多码连续识别
     tmp.toBlob(function(blob){
       let reader = new FileReader();
       reader.onload=function(){
         let config={
           decoder: {
             readers: ["ean_reader","ean_8_reader"],
-            multiple: true, // 複数バーコード認識を有効化
+            multiple: false, // 改回false，保证decodeSingle能正常识别
           },
-          locator:{patchSize:"large",halfSample:false},
-          locate:false,
+          locator:{patchSize:"large",halfSample:true}, // 改halfSample为true，提升识别速度
+          locate:true, // 开启定位，帮助识别
           src:reader.result,
         };
-        Quagga.decodeSingle(config,function(){});
+        Quagga.decodeSingle(config, function(result) {
+          // 核心修改2：直接在decodeSingle的回调中处理识别结果（更稳定）
+          if (result && result.codeResult && result.codeResult.code) {
+            handleDetectedCode(result.codeResult.code);
+          }
+        });
       }
       reader.readAsDataURL(blob);
     });
-    // 50msごとにスキャンを継続
-    setTimeout(Scan,50,false);
+    setTimeout(Scan, 200, false); // 延长扫描间隔到200ms，减少性能消耗
   }
 
-  // 2. 重构识别逻辑：按条码分组计数，去重后添加
-  Quagga.onDetected(function (result) {
-    const currentCode = result.codeResult.code;
-    // スキップ条件：1. 既に認識済みの条码 2. 空の条码
-    if (!currentCode || scannedCodes.has(currentCode)) {
-      return;
-    }
-
-    // 各条码ごとにカウントを管理（防誤読）
-    if (codeCounter[currentCode]) {
-      codeCounter[currentCode]++; // 同じ条码ならカウント増加
-    } else {
-      // 新しい条码なら、他の条码のカウントをリセットして自身を初期化
-      codeCounter = {};
-      codeCounter[currentCode] = 1;
-    }
-
-    // 連続3回同じ条码を認識したら確定
-    if (codeCounter[currentCode] >= 3) {
-      console.log("バーコード確定：", currentCode);
-      jan.value += currentCode + '\n';
+  // 简化的识别处理函数
+  function handleDetectedCode(code) {
+    // 去重：仅添加未识别过的条码
+    if (!scannedCodes.has(code)) {
+      console.log("バーコード認識：", code);
+      jan.value += code + '\n';
       jan.scrollTop = jan.scrollHeight;
-      scannedCodes.add(currentCode); // 認識済みとして登録（重複防止）
-      codeCounter = {}; // カウンターリセット→次の条码を待機
+      scannedCodes.add(code); // 标记为已识别
     }
-  });
+  }
 
-  // 3. 清空按钮功能（追加：便利な操作のため）
+  // 清空按钮
   document.getElementById('clear-btn').addEventListener('click', function() {
     jan.value = '';
     scannedCodes.clear();
-    codeCounter = {};
   });
 });
 </script>
 <style>
-/* レイアウト最適化：カメラ画面とtextareaを重ならないように */
 #preview {
   margin-bottom: 15px;
   border: 1px solid #ddd;
