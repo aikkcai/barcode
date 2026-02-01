@@ -29,21 +29,34 @@ body {
   margin: 10px 0;
   display: block !important;
 }
-/* 目标条码表格样式（HTML中直接显示） */
+/* 目标条码表格样式（两列：序号+条码） */
 #targetBarcodeTable {
   width: 100%;
   border-collapse: collapse;
   margin: 15px 0;
-  font-size: 12px;
+  font-size: 14px; /* 放大字体，更易读 */
 }
+#targetBarcodeTable th,
 #targetBarcodeTable td {
   border: 1px solid #ddd;
-  padding: 5px 4px;
+  padding: 8px 10px;
   text-align: center;
-  white-space: nowrap;
+}
+#targetBarcodeTable th {
+  background-color: #f8f9fa;
+  font-weight: bold;
+}
+/* 序号列宽度固定 */
+#targetBarcodeTable td:first-child {
+  width: 80px;
+  color: #666;
+}
+/* 条码列占满剩余宽度 */
+#targetBarcodeTable td:last-child {
+  width: calc(100% - 80px);
 }
 /* 匹配高亮：黄色背景 */
-#targetBarcodeTable td.highlight {
+#targetBarcodeTable tr.highlight td {
   background-color: #fff3cd !important;
   font-weight: bold;
   color: #d63384;
@@ -159,7 +172,7 @@ window.addEventListener('load',function(event){
       jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
       
-      // 高亮HTML表格中匹配的条码
+      // 高亮HTML表格中匹配的条码行
       highlightMatchedBarcode(currentCode);
       // 播放提示音+粤语播报
       playBeepSound();
@@ -197,12 +210,12 @@ window.addEventListener('load',function(event){
     });
   }
 
-  // 高亮HTML表格中匹配的单元格
+  // 高亮HTML表格中匹配的行（序号+条码列一起变黄）
   function highlightMatchedBarcode(code) {
-    // 查找HTML表格中对应data-code的单元格
-    const targetCell = document.querySelector(`#targetBarcodeTable td[data-code="${code}"]`);
-    if (targetCell) {
-      targetCell.classList.add('highlight');
+    // 查找HTML表格中对应data-code的行
+    const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
+    if (targetRow) {
+      targetRow.classList.add('highlight'); // 整行高亮
     }
   }
 
@@ -263,218 +276,628 @@ window.addEventListener('load',function(event){
   <!-- 摄像头画布 -->
   <canvas id="preview"></canvas>
 
-  <!-- 目标条码表格：直接写在HTML中，页面加载即显示 -->
-  <h4>目标条码列表（识别匹配后变黄）</h4>
+  <!-- 目标条码表格：两列（序号+条码），页面加载即显示 -->
+  <h4>目标条码列表（识别匹配后整行变黄）</h4>
   <table id="targetBarcodeTable">
-    <tr>
-      <td data-code="P005849">P005849</td>
-      <td data-code="0019885">0019885</td>
-      <td data-code="0020554">0020554</td>
-      <td data-code="0020560">0020560</td>
-      <td data-code="0025095">0025095</td>
-      <td data-code="0021609">0021609</td>
-    </tr>
-    <tr>
-      <td data-code="0025091">0025091</td>
-      <td data-code="0025111">0025111</td>
-      <td data-code="0030830">0030830</td>
-      <td data-code="0033390">0033390</td>
-      <td data-code="0033393">0033393</td>
-      <td data-code="0036973">0036973</td>
-    </tr>
-    <tr>
-      <td data-code="0036974">0036974</td>
-      <td data-code="0025115">0025115</td>
-      <td data-code="0025122">0025122</td>
-      <td data-code="0030827">0030827</td>
-      <td data-code="0033384">0033384</td>
-      <td data-code="0025116">0025116</td>
-    </tr>
-    <tr>
-      <td data-code="0025126">0025126</td>
-      <td data-code="0025127">0025127</td>
-      <td data-code="0020417">0020417</td>
-      <td data-code="0020418">0020418</td>
-      <td data-code="0020419">0020419</td>
-      <td data-code="0020420">0020420</td>
-    </tr>
-    <tr>
-      <td data-code="0020421">0020421</td>
-      <td data-code="0020422">0020422</td>
-      <td data-code="0020423">0020423</td>
-      <td data-code="0020424">0020424</td>
-      <td data-code="0020425">0020425</td>
-      <td data-code="0020426">0020426</td>
-    </tr>
-    <tr>
-      <td data-code="0020427">0020427</td>
-      <td data-code="0020428">0020428</td>
-      <td data-code="0020430">0020430</td>
-      <td data-code="0020431">0020431</td>
-      <td data-code="0020432">0020432</td>
-      <td data-code="0020433">0020433</td>
-    </tr>
-    <tr>
-      <td data-code="0020434">0020434</td>
-      <td data-code="0020435">0020435</td>
-      <td data-code="0020437">0020437</td>
-      <td data-code="0020438">0020438</td>
-      <td data-code="0022517">0022517</td>
-      <td data-code="0022518">0022518</td>
-    </tr>
-    <tr>
-      <td data-code="0022519">0022519</td>
-      <td data-code="0022520">0022520</td>
-      <td data-code="0022521">0022521</td>
-      <td data-code="0022522">0022522</td>
-      <td data-code="0022523">0022523</td>
-      <td data-code="0022524">0022524</td>
-    </tr>
-    <tr>
-      <td data-code="0044713">0044713</td>
-      <td data-code="0044714">0044714</td>
-      <td data-code="0033632">0033632</td>
-      <td data-code="0033630">0033630</td>
-      <td data-code="0034128">0034128</td>
-      <td data-code="0026156">0026156</td>
-    </tr>
-    <tr>
-      <td data-code="0033627">0033627</td>
-      <td data-code="0033624">0033624</td>
-      <td data-code="0033623">0033623</td>
-      <td data-code="0033640">0033640</td>
-      <td data-code="0033638">0033638</td>
-      <td data-code="0033637">0033637</td>
-    </tr>
-    <tr>
-      <td data-code="0036503">0036503</td>
-      <td data-code="0036504">0036504</td>
-      <td data-code="0036505">0036505</td>
-      <td data-code="0036506">0036506</td>
-      <td data-code="0036287">0036287</td>
-      <td data-code="0036288">0036288</td>
-    </tr>
-    <tr>
-      <td data-code="0036286">0036286</td>
-      <td data-code="0036289">0036289</td>
-      <td data-code="0036875">0036875</td>
-      <td data-code="0036876">0036876</td>
-      <td data-code="0036074">0036074</td>
-      <td data-code="0036051">0036051</td>
-    </tr>
-    <tr>
-      <td data-code="0026361">0026361</td>
-      <td data-code="0026362">0026362</td>
-      <td data-code="0031385">0031385</td>
-      <td data-code="0031846">0031846</td>
-      <td data-code="0031845">0031845</td>
-      <td data-code="0036748">0036748</td>
-    </tr>
-    <tr>
-      <td data-code="0032217">0032217</td>
-      <td data-code="0032469">0032469</td>
-      <td data-code="0036068">0036068</td>
-      <td data-code="0019141">0019141</td>
-      <td data-code="0019145">0019145</td>
-      <td data-code="0019147">0019147</td>
-    </tr>
-    <tr>
-      <td data-code="0019148">0019148</td>
-      <td data-code="0021619">0021619</td>
-      <td data-code="0021620">0021620</td>
-      <td data-code="0017643">0017643</td>
-      <td data-code="0019944">0019944</td>
-      <td data-code="0031167">0031167</td>
-    </tr>
-    <tr>
-      <td data-code="0031168">0031168</td>
-      <td data-code="0031175">0031175</td>
-      <td data-code="0031155">0031155</td>
-      <td data-code="0031149">0031149</td>
-      <td data-code="0031170">0031170</td>
-      <td data-code="0027946">0027946</td>
-    </tr>
-    <tr>
-      <td data-code="0027948">0027948</td>
-      <td data-code="0031221">0031221</td>
-      <td data-code="0033396">0033396</td>
-      <td data-code="0033397">0033397</td>
-      <td data-code="0033398">0033398</td>
-      <td data-code="0031851">0031851</td>
-    </tr>
-    <tr>
-      <td data-code="0031852">0031852</td>
-      <td data-code="0018142">0018142</td>
-      <td data-code="0024848">0024848</td>
-      <td data-code="0024849">0024849</td>
-      <td data-code="0024854">0024854</td>
-      <td data-code="0024855">0024855</td>
-    </tr>
-    <tr>
-      <td data-code="0024856">0024856</td>
-      <td data-code="0022287">0022287</td>
-      <td data-code="0036279">0036279</td>
-      <td data-code="0036280">0036280</td>
-      <td data-code="P005403">P005403</td>
-      <td data-code="P005440">P005440</td>
-    </tr>
-    <tr>
-      <td data-code="P005448">P005448</td>
-      <td data-code="P005438">P005438</td>
-      <td data-code="P005481">P005481</td>
-      <td data-code="P005496">P005496</td>
-      <td data-code="P005502">P005502</td>
-      <td data-code="0026679">0026679</td>
-    </tr>
-    <tr>
-      <td data-code="0031703">0031703</td>
-      <td data-code="0031758">0031758</td>
-      <td data-code="0031727">0031727</td>
-      <td data-code="0031698">0031698</td>
-      <td data-code="0017591">0017591</td>
-      <td data-code="0020782">0020782</td>
-    </tr>
-    <tr>
-      <td data-code="0022318">0022318</td>
-      <td data-code="0036282">0036282</td>
-      <td data-code="0036283">0036283</td>
-      <td data-code="0036284">0036284</td>
-      <td data-code="0019954">0019954</td>
-      <td data-code="0020750">0020750</td>
-    </tr>
-    <tr>
-      <td data-code="0023739">0023739</td>
-      <td data-code="0023740">0023740</td>
-      <td data-code="0018144">0018144</td>
-      <td data-code="0019953">0019953</td>
-      <td data-code="0022234">0022234</td>
-      <td data-code="0022235">0022235</td>
-    </tr>
-    <tr>
-      <td data-code="0026356">0026356</td>
-      <td data-code="L002365">L002365</td>
-      <td data-code="0032130">0032130</td>
-      <td data-code="0033512">0033512</td>
-      <td data-code="0036310">0036310</td>
-      <td data-code="0033633">0033633</td>
-    </tr>
-    <tr>
-      <td data-code="0022275">0022275</td>
-      <td data-code="0022276">0022276</td>
-      <td data-code="0015684">0015684</td>
-      <td data-code="0022324">0022324</td>
-      <td data-code="0022333">0022333</td>
-      <td data-code="0032135">0032135</td>
-    </tr>
-    <tr>
-      <td data-code="0032136">0032136</td>
-      <td data-code="4892218000233">4892218000233</td>
-    </tr>
+    <thead>
+      <tr>
+        <th>序号</th>
+        <th>条码</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr data-code="P005849">
+        <td>1</td>
+        <td>P005849</td>
+      </tr>
+      <tr data-code="0019885">
+        <td>2</td>
+        <td>0019885</td>
+      </tr>
+      <tr data-code="0020554">
+        <td>3</td>
+        <td>0020554</td>
+      </tr>
+      <tr data-code="0020560">
+        <td>4</td>
+        <td>0020560</td>
+      </tr>
+      <tr data-code="0025095">
+        <td>5</td>
+        <td>0025095</td>
+      </tr>
+      <tr data-code="0021609">
+        <td>6</td>
+        <td>0021609</td>
+      </tr>
+      <tr data-code="0025091">
+        <td>7</td>
+        <td>0025091</td>
+      </tr>
+      <tr data-code="0025111">
+        <td>8</td>
+        <td>0025111</td>
+      </tr>
+      <tr data-code="0030830">
+        <td>9</td>
+        <td>0030830</td>
+      </tr>
+      <tr data-code="0033390">
+        <td>10</td>
+        <td>0033390</td>
+      </tr>
+      <tr data-code="0033393">
+        <td>11</td>
+        <td>0033393</td>
+      </tr>
+      <tr data-code="0036973">
+        <td>12</td>
+        <td>0036973</td>
+      </tr>
+      <tr data-code="0036974">
+        <td>13</td>
+        <td>0036974</td>
+      </tr>
+      <tr data-code="0025115">
+        <td>14</td>
+        <td>0025115</td>
+      </tr>
+      <tr data-code="0025122">
+        <td>15</td>
+        <td>0025122</td>
+      </tr>
+      <tr data-code="0030827">
+        <td>16</td>
+        <td>0030827</td>
+      </tr>
+      <tr data-code="0033384">
+        <td>17</td>
+        <td>0033384</td>
+      </tr>
+      <tr data-code="0025116">
+        <td>18</td>
+        <td>0025116</td>
+      </tr>
+      <tr data-code="0025126">
+        <td>19</td>
+        <td>0025126</td>
+      </tr>
+      <tr data-code="0025127">
+        <td>20</td>
+        <td>0025127</td>
+      </tr>
+      <tr data-code="0020417">
+        <td>21</td>
+        <td>0020417</td>
+      </tr>
+      <tr data-code="0020418">
+        <td>22</td>
+        <td>0020418</td>
+      </tr>
+      <tr data-code="0020419">
+        <td>23</td>
+        <td>0020419</td>
+      </tr>
+      <tr data-code="0020420">
+        <td>24</td>
+        <td>0020420</td>
+      </tr>
+      <tr data-code="0020421">
+        <td>25</td>
+        <td>0020421</td>
+      </tr>
+      <tr data-code="0020422">
+        <td>26</td>
+        <td>0020422</td>
+      </tr>
+      <tr data-code="0020423">
+        <td>27</td>
+        <td>0020423</td>
+      </tr>
+      <tr data-code="0020424">
+        <td>28</td>
+        <td>0020424</td>
+      </tr>
+      <tr data-code="0020425">
+        <td>29</td>
+        <td>0020425</td>
+      </tr>
+      <tr data-code="0020426">
+        <td>30</td>
+        <td>0020426</td>
+      </tr>
+      <tr data-code="0020427">
+        <td>31</td>
+        <td>0020427</td>
+      </tr>
+      <tr data-code="0020428">
+        <td>32</td>
+        <td>0020428</td>
+      </tr>
+      <tr data-code="0020430">
+        <td>33</td>
+        <td>0020430</td>
+      </tr>
+      <tr data-code="0020431">
+        <td>34</td>
+        <td>0020431</td>
+      </tr>
+      <tr data-code="0020432">
+        <td>35</td>
+        <td>0020432</td>
+      </tr>
+      <tr data-code="0020433">
+        <td>36</td>
+        <td>0020433</td>
+      </tr>
+      <tr data-code="0020434">
+        <td>37</td>
+        <td>0020434</td>
+      </tr>
+      <tr data-code="0020435">
+        <td>38</td>
+        <td>0020435</td>
+      </tr>
+      <tr data-code="0020437">
+        <td>39</td>
+        <td>0020437</td>
+      </tr>
+      <tr data-code="0020438">
+        <td>40</td>
+        <td>0020438</td>
+      </tr>
+      <tr data-code="0022517">
+        <td>41</td>
+        <td>0022517</td>
+      </tr>
+      <tr data-code="0022518">
+        <td>42</td>
+        <td>0022518</td>
+      </tr>
+      <tr data-code="0022519">
+        <td>43</td>
+        <td>0022519</td>
+      </tr>
+      <tr data-code="0022520">
+        <td>44</td>
+        <td>0022520</td>
+      </tr>
+      <tr data-code="0022521">
+        <td>45</td>
+        <td>0022521</td>
+      </tr>
+      <tr data-code="0022522">
+        <td>46</td>
+        <td>0022522</td>
+      </tr>
+      <tr data-code="0022523">
+        <td>47</td>
+        <td>0022523</td>
+      </tr>
+      <tr data-code="0022524">
+        <td>48</td>
+        <td>0022524</td>
+      </tr>
+      <tr data-code="0044713">
+        <td>49</td>
+        <td>0044713</td>
+      </tr>
+      <tr data-code="0044714">
+        <td>50</td>
+        <td>0044714</td>
+      </tr>
+      <tr data-code="0033632">
+        <td>51</td>
+        <td>0033632</td>
+      </tr>
+      <tr data-code="0033630">
+        <td>52</td>
+        <td>0033630</td>
+      </tr>
+      <tr data-code="0034128">
+        <td>53</td>
+        <td>0034128</td>
+      </tr>
+      <tr data-code="0026156">
+        <td>54</td>
+        <td>0026156</td>
+      </tr>
+      <tr data-code="0033627">
+        <td>55</td>
+        <td>0033627</td>
+      </tr>
+      <tr data-code="0033624">
+        <td>56</td>
+        <td>0033624</td>
+      </tr>
+      <tr data-code="0033623">
+        <td>57</td>
+        <td>0033623</td>
+      </tr>
+      <tr data-code="0033640">
+        <td>58</td>
+        <td>0033640</td>
+      </tr>
+      <tr data-code="0033638">
+        <td>59</td>
+        <td>0033638</td>
+      </tr>
+      <tr data-code="0033637">
+        <td>60</td>
+        <td>0033637</td>
+      </tr>
+      <tr data-code="0036503">
+        <td>61</td>
+        <td>0036503</td>
+      </tr>
+      <tr data-code="0036504">
+        <td>62</td>
+        <td>0036504</td>
+      </tr>
+      <tr data-code="0036505">
+        <td>63</td>
+        <td>0036505</td>
+      </tr>
+      <tr data-code="0036506">
+        <td>64</td>
+        <td>0036506</td>
+      </tr>
+      <tr data-code="0036287">
+        <td>65</td>
+        <td>0036287</td>
+      </tr>
+      <tr data-code="0036288">
+        <td>66</td>
+        <td>0036288</td>
+      </tr>
+      <tr data-code="0036286">
+        <td>67</td>
+        <td>0036286</td>
+      </tr>
+      <tr data-code="0036289">
+        <td>68</td>
+        <td>0036289</td>
+      </tr>
+      <tr data-code="0036875">
+        <td>69</td>
+        <td>0036875</td>
+      </tr>
+      <tr data-code="0036876">
+        <td>70</td>
+        <td>0036876</td>
+      </tr>
+      <tr data-code="0036074">
+        <td>71</td>
+        <td>0036074</td>
+      </tr>
+      <tr data-code="0036051">
+        <td>72</td>
+        <td>0036051</td>
+      </tr>
+      <tr data-code="0026361">
+        <td>73</td>
+        <td>0026361</td>
+      </tr>
+      <tr data-code="0026362">
+        <td>74</td>
+        <td>0026362</td>
+      </tr>
+      <tr data-code="0031385">
+        <td>75</td>
+        <td>0031385</td>
+      </tr>
+      <tr data-code="0031846">
+        <td>76</td>
+        <td>0031846</td>
+      </tr>
+      <tr data-code="0031845">
+        <td>77</td>
+        <td>0031845</td>
+      </tr>
+      <tr data-code="0036748">
+        <td>78</td>
+        <td>0036748</td>
+      </tr>
+      <tr data-code="0032217">
+        <td>79</td>
+        <td>0032217</td>
+      </tr>
+      <tr data-code="0032469">
+        <td>80</td>
+        <td>0032469</td>
+      </tr>
+      <tr data-code="0036068">
+        <td>81</td>
+        <td>0036068</td>
+      </tr>
+      <tr data-code="0019141">
+        <td>82</td>
+        <td>0019141</td>
+      </tr>
+      <tr data-code="0019145">
+        <td>83</td>
+        <td>0019145</td>
+      </tr>
+      <tr data-code="0019147">
+        <td>84</td>
+        <td>0019147</td>
+      </tr>
+      <tr data-code="0019148">
+        <td>85</td>
+        <td>0019148</td>
+      </tr>
+      <tr data-code="0021619">
+        <td>86</td>
+        <td>0021619</td>
+      </tr>
+      <tr data-code="0021620">
+        <td>87</td>
+        <td>0021620</td>
+      </tr>
+      <tr data-code="0017643">
+        <td>88</td>
+        <td>0017643</td>
+      </tr>
+      <tr data-code="0019944">
+        <td>89</td>
+        <td>0019944</td>
+      </tr>
+      <tr data-code="0031167">
+        <td>90</td>
+        <td>0031167</td>
+      </tr>
+      <tr data-code="0031168">
+        <td>91</td>
+        <td>0031168</td>
+      </tr>
+      <tr data-code="0031175">
+        <td>92</td>
+        <td>0031175</td>
+      </tr>
+      <tr data-code="0031155">
+        <td>93</td>
+        <td>0031155</td>
+      </tr>
+      <tr data-code="0031149">
+        <td>94</td>
+        <td>0031149</td>
+      </tr>
+      <tr data-code="0031170">
+        <td>95</td>
+        <td>0031170</td>
+      </tr>
+      <tr data-code="0027946">
+        <td>96</td>
+        <td>0027946</td>
+      </tr>
+      <tr data-code="0027948">
+        <td>97</td>
+        <td>0027948</td>
+      </tr>
+      <tr data-code="0031221">
+        <td>98</td>
+        <td>0031221</td>
+      </tr>
+      <tr data-code="0033396">
+        <td>99</td>
+        <td>0033396</td>
+      </tr>
+      <tr data-code="0033397">
+        <td>100</td>
+        <td>0033397</td>
+      </tr>
+      <tr data-code="0033398">
+        <td>101</td>
+        <td>0033398</td>
+      </tr>
+      <tr data-code="0031851">
+        <td>102</td>
+        <td>0031851</td>
+      </tr>
+      <tr data-code="0031852">
+        <td>103</td>
+        <td>0031852</td>
+      </tr>
+      <tr data-code="0018142">
+        <td>104</td>
+        <td>0018142</td>
+      </tr>
+      <tr data-code="0024848">
+        <td>105</td>
+        <td>0024848</td>
+      </tr>
+      <tr data-code="0024849">
+        <td>106</td>
+        <td>0024849</td>
+      </tr>
+      <tr data-code="0024854">
+        <td>107</td>
+        <td>0024854</td>
+      </tr>
+      <tr data-code="0024855">
+        <td>108</td>
+        <td>0024855</td>
+      </tr>
+      <tr data-code="0024856">
+        <td>109</td>
+        <td>0024856</td>
+      </tr>
+      <tr data-code="0022287">
+        <td>110</td>
+        <td>0022287</td>
+      </tr>
+      <tr data-code="0036279">
+        <td>111</td>
+        <td>0036279</td>
+      </tr>
+      <tr data-code="0036280">
+        <td>112</td>
+        <td>0036280</td>
+      </tr>
+      <tr data-code="P005403">
+        <td>113</td>
+        <td>P005403</td>
+      </tr>
+      <tr data-code="P005440">
+        <td>114</td>
+        <td>P005440</td>
+      </tr>
+      <tr data-code="P005448">
+        <td>115</td>
+        <td>P005448</td>
+      </tr>
+      <tr data-code="P005438">
+        <td>116</td>
+        <td>P005438</td>
+      </tr>
+      <tr data-code="P005481">
+        <td>117</td>
+        <td>P005481</td>
+      </tr>
+      <tr data-code="P005496">
+        <td>118</td>
+        <td>P005496</td>
+      </tr>
+      <tr data-code="P005502">
+        <td>119</td>
+        <td>P005502</td>
+      </tr>
+      <tr data-code="0026679">
+        <td>120</td>
+        <td>0026679</td>
+      </tr>
+      <tr data-code="0031703">
+        <td>121</td>
+        <td>0031703</td>
+      </tr>
+      <tr data-code="0031758">
+        <td>122</td>
+        <td>0031758</td>
+      </tr>
+      <tr data-code="0031727">
+        <td>123</td>
+        <td>0031727</td>
+      </tr>
+      <tr data-code="0031698">
+        <td>124</td>
+        <td>0031698</td>
+      </tr>
+      <tr data-code="0017591">
+        <td>125</td>
+        <td>0017591</td>
+      </tr>
+      <tr data-code="0020782">
+        <td>126</td>
+        <td>0020782</td>
+      </tr>
+      <tr data-code="0022318">
+        <td>127</td>
+        <td>0022318</td>
+      </tr>
+      <tr data-code="0036282">
+        <td>128</td>
+        <td>0036282</td>
+      </tr>
+      <tr data-code="0036283">
+        <td>129</td>
+        <td>0036283</td>
+      </tr>
+      <tr data-code="0036284">
+        <td>130</td>
+        <td>0036284</td>
+      </tr>
+      <tr data-code="0019954">
+        <td>131</td>
+        <td>0019954</td>
+      </tr>
+      <tr data-code="0020750">
+        <td>132</td>
+        <td>0020750</td>
+      </tr>
+      <tr data-code="0023739">
+        <td>133</td>
+        <td>0023739</td>
+      </tr>
+      <tr data-code="0023740">
+        <td>134</td>
+        <td>0023740</td>
+      </tr>
+      <tr data-code="0018144">
+        <td>135</td>
+        <td>0018144</td>
+      </tr>
+      <tr data-code="0019953">
+        <td>136</td>
+        <td>0019953</td>
+      </tr>
+      <tr data-code="0022234">
+        <td>137</td>
+        <td>0022234</td>
+      </tr>
+      <tr data-code="0022235">
+        <td>138</td>
+        <td>0022235</td>
+      </tr>
+      <tr data-code="0026356">
+        <td>139</td>
+        <td>0026356</td>
+      </tr>
+      <tr data-code="L002365">
+        <td>140</td>
+        <td>L002365</td>
+      </tr>
+      <tr data-code="0032130">
+        <td>141</td>
+        <td>0032130</td>
+      </tr>
+      <tr data-code="0033512">
+        <td>142</td>
+        <td>0033512</td>
+      </tr>
+      <tr data-code="0036310">
+        <td>143</td>
+        <td>0036310</td>
+      </tr>
+      <tr data-code="0033633">
+        <td>144</td>
+        <td>0033633</td>
+      </tr>
+      <tr data-code="0022275">
+        <td>145</td>
+        <td>0022275</td>
+      </tr>
+      <tr data-code="0022276">
+        <td>146</td>
+        <td>0022276</td>
+      </tr>
+      <tr data-code="0015684">
+        <td>147</td>
+        <td>0015684</td>
+      </tr>
+      <tr data-code="0022324">
+        <td>148</td>
+        <td>0022324</td>
+      </tr>
+      <tr data-code="0022333">
+        <td>149</td>
+        <td>0022333</td>
+      </tr>
+      <tr data-code="0032135">
+        <td>150</td>
+        <td>0032135</td>
+      </tr>
+      <tr data-code="0032136">
+        <td>151</td>
+        <td>0032136</td>
+      </tr>
+      <tr data-code="4892218000233">
+        <td>152</td>
+        <td>4892218000233</td>
+      </tr>
+    </tbody>
   </table>
 
   <!-- 识别结果文本域 -->
   <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
 </body>
 </html>
-
-
