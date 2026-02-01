@@ -3,109 +3,94 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
+<!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
+<style>
+/* 整体样式优化 */
+* {box-sizing: border-box; margin: 0; padding: 0;}
+body {padding: 15px; font-family: Arial, sans-serif;}
+#preview {
+  margin-bottom: 15px;
+  border: 1px solid #ddd;
+  max-width: 100%;
+}
+/* 条码类型选择区样式 */
+.barcode-types {
+  margin: 15px 0;
+  padding: 10px;
+  border: 1px solid #eee;
+  border-radius: 6px;
+}
+.barcode-types h4 {
+  margin-bottom: 8px;
+  font-size: 16px;
+  color: #333;
+}
+.type-item {
+  display: flex;
+  align-items: center;
+  margin: 5px 0;
+}
+.type-item input {
+  margin-right: 8px;
+}
+/* 按钮样式 */
+.btn-group {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0;
+}
+.btn-group button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+#clear-btn {background: #6c757d; color: white;}
+/* 文本域样式 */
+#jan {
+  width: 100%;
+  padding: 10px;
+  font-size: 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  min-height: 120px;
+  resize: vertical;
+}
+</style>
 <script>
-var DetectedCount=0,DetectedCode="";
-var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
-// 新增：存储已识别的条码（去重，区分不同条码）
-var scannedCodes = new Set();
+var DetectedCount=0, DetectedCode="";
+var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
+var scannedCodes = new Set(); // 已识别的条码（去重）
+var selectedReaders = []; // 存储选中的条码类型
 
-// 可自定义指定需要识别的条码类型（按需增删）
-var SUPPORTED_BARCODES = [
-  "ean_reader",      // EAN-13
-  "ean_8_reader",    // EAN-8
-  "code_128_reader", // Code128（常用物流条码）
-  "upc_reader",      // UPC-A（北美商品条码）
-  "code_39_reader"   // Code39（工业条码）
+// 定义所有可选的条码类型（名称+对应Quagga识别器）
+const BARCODE_TYPES = [
+  { label: "EAN-13（商品条码）", value: "ean_reader" },
+  { label: "EAN-8（短商品条码）", value: "ean_8_reader" },
+  { label: "Code128（物流条码）", value: "code_128_reader" },
+  { label: "UPC-A（北美商品条码）", value: "upc_reader" },
+  { label: "Code39（工业条码）", value: "code_39_reader" },
+  { label: "Codabar（图书馆/血库）", value: "codabar_reader" }
 ];
 
 window.addEventListener('load',function(event){
-  video=document.createElement('video');
-  video.setAttribute("autoplay","");
-  video.setAttribute("muted","");
-  video.setAttribute("playsinline","");
-  video.onloadedmetadata = function(e){video.play();};
-  prev=document.getElementById("preview");
-  prev_ctx=prev.getContext("2d", {willReadFrequently:true});
+  // 初始化DOM元素
+  prev = document.getElementById("preview");
+  prev_ctx = prev.getContext("2d", {willReadFrequently:true});
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
-  jan=document.getElementById("jan");
+  jan = document.getElementById("jan");
 
-  navigator.mediaDevices.getUserMedia(
-    {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
-  ).then(function(stream){
-    video.srcObject = stream;
-    setTimeout(Scan,500,true);
-  }).catch(function(err){
-    jan.value+=err+'\n';
-  });
+  // 渲染条码类型选择框
+  renderBarcodeTypeOptions();
 
-  function Scan(first){
-    if(first){
-      w=video.videoWidth;
-      h=video.videoHeight;
-      prev.style.width=(w/2)+"px";
-      prev.style.height=(h/2)+"px";
-      prev.setAttribute("width",w);
-      prev.setAttribute("height",h);
-      mw=w*0.5;
-      mh=w*0.2;
-      x1=(w-mw)/2;
-      y1=(h-mh)/2;
-    }
-    prev_ctx.drawImage(video,0,0,w,h);
-    prev_ctx.beginPath();
-    prev_ctx.strokeStyle="rgb(255,0,0)";
-    prev_ctx.lineWidth=2;
-    prev_ctx.rect(x1,y1,mw,mh);
-    prev_ctx.stroke();
-    tmp.setAttribute("width",mw);
-    tmp.setAttribute("height",mh);
-    tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
+  // 初始化摄像头
+  initCamera();
 
-    tmp.toBlob(function(blob){
-      let reader = new FileReader();
-      reader.onload=function(){
-        let config={
-          decoder: {
-            readers: SUPPORTED_BARCODES, // 使用自定义的支持条码类型
-            multiple: false,
-          },
-          locator:{patchSize:"large",halfSample:true}, // 优化识别率
-          locate:true, // 开启定位，提升识别速度
-          src:reader.result,
-        };
-        Quagga.decodeSingle(config,function(){});
-      }
-      reader.readAsDataURL(blob);
-    });
-    setTimeout(Scan, 200, false); // 延长间隔，适配手机性能
-  }
-
-  Quagga.onDetected(function (result) {
-    const currentCode = result.codeResult.code;
-    // 新增：跳过已识别过的不同条码（核心区分逻辑）
-    if (scannedCodes.has(currentCode)) return;
-
-    // 保留原防误读逻辑
-    if(DetectedCode===currentCode){
-      DetectedCount++;
-    }else{
-      DetectedCount=0;
-      DetectedCode=currentCode;
-    }
-
-    if(DetectedCount>=3){
-      console.log("识别到新条码：", currentCode);
-      jan.value+=currentCode+'\n';
-      jan.scrollTop=jan.scrollHeight;
-      scannedCodes.add(currentCode); // 标记为已识别，避免重复
-      DetectedCode='';
-      DetectedCount=0;
-    }
-  });
-
-  // 新增：清空按钮，重置已识别的不同条码
+  // 清空按钮事件
   document.getElementById('clear-btn').addEventListener('click', function() {
     jan.value = '';
     scannedCodes.clear();
@@ -113,16 +98,149 @@ window.addEventListener('load',function(event){
     DetectedCount = 0;
   });
 });
+
+// 渲染条码类型选择选项
+function renderBarcodeTypeOptions() {
+  const typeContainer = document.getElementById('barcode-type-container');
+  BARCODE_TYPES.forEach(type => {
+    const item = document.createElement('div');
+    item.className = 'type-item';
+    item.innerHTML = `
+      <input type="checkbox" id="type-${type.value}" value="${type.value}" checked>
+      <label for="type-${type.value}">${type.label}</label>
+    `;
+    // 勾选/取消勾选时更新选中的识别器列表
+    item.querySelector('input').addEventListener('change', updateSelectedReaders);
+    typeContainer.appendChild(item);
+  });
+  // 初始化选中的识别器（默认全选）
+  updateSelectedReaders();
+}
+
+// 更新选中的条码类型列表
+function updateSelectedReaders() {
+  selectedReaders = [];
+  BARCODE_TYPES.forEach(type => {
+    const checkbox = document.getElementById(`type-${type.value}`);
+    if (checkbox.checked) {
+      selectedReaders.push(type.value);
+    }
+  });
+  console.log("当前选中的条码类型：", selectedReaders);
+}
+
+// 初始化摄像头
+function initCamera() {
+  video = document.createElement('video');
+  video.setAttribute("autoplay", "");
+  video.setAttribute("muted", "");
+  video.setAttribute("playsinline", "");
+  video.onloadedmetadata = function(e) {video.play();};
+
+  navigator.mediaDevices.getUserMedia({
+    "audio": false,
+    "video": {"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}
+  }).then(function(stream){
+    video.srcObject = stream;
+    setTimeout(Scan, 500, true);
+  }).catch(function(err){
+    jan.value += "カメラ権限エラー：" + err + '\n';
+  });
+}
+
+// 扫描逻辑
+function Scan(first){
+  if(first){
+    w = video.videoWidth;
+    h = video.videoHeight;
+    prev.style.width = (w/2) + "px";
+    prev.style.height = (h/2) + "px";
+    prev.setAttribute("width", w);
+    prev.setAttribute("height", h);
+    mw = w * 0.5;
+    mh = w * 0.2;
+    x1 = (w - mw)/2;
+    y1 = (h - mh)/2;
+  }
+
+  // 绘制摄像头画面和扫描框
+  prev_ctx.drawImage(video, 0, 0, w, h);
+  prev_ctx.beginPath();
+  prev_ctx.strokeStyle = "rgb(255,0,0)";
+  prev_ctx.lineWidth = 2;
+  prev_ctx.rect(x1, y1, mw, mh);
+  prev_ctx.stroke();
+
+  // 裁剪扫描区域并识别
+  tmp.setAttribute("width", mw);
+  tmp.setAttribute("height", mh);
+  tmp_ctx.drawImage(prev, x1, y1, mw, mh, 0, 0, mw, mh);
+
+  tmp.toBlob(function(blob){
+    let reader = new FileReader();
+    reader.onload = function(){
+      // 仅当选中了条码类型时才识别
+      if (selectedReaders.length === 0) {
+        return; // 未选中任何类型，跳过识别
+      }
+      let config = {
+        decoder: {
+          readers: selectedReaders, // 使用选中的条码类型
+          multiple: false
+        },
+        locator: {patchSize:"large", halfSample:true},
+        locate: true,
+        src: reader.result
+      };
+      Quagga.decodeSingle(config, function(){});
+    };
+    reader.readAsDataURL(blob);
+  });
+
+  setTimeout(Scan, 200, false);
+}
+
+// 识别结果处理
+Quagga.onDetected(function (result) {
+  const currentCode = result.codeResult.code;
+  // 跳过已识别的条码
+  if (scannedCodes.has(currentCode)) return;
+
+  // 防误读：连续3次识别相同条码才确认
+  if(DetectedCode === currentCode){
+    DetectedCount++;
+  } else {
+    DetectedCount = 0;
+    DetectedCode = currentCode;
+  }
+
+  if(DetectedCount >= 3){
+    console.log("识别到条码：", currentCode);
+    jan.value += currentCode + '\n';
+    jan.scrollTop = jan.scrollHeight;
+    scannedCodes.add(currentCode);
+    DetectedCode = '';
+    DetectedCount = 0;
+  }
+});
 </script>
-<style>
-#preview {margin-bottom: 15px; border: 1px solid #ddd;}
-#jan {width: 100%; padding: 8px; font-size: 16px; box-sizing: border-box;}
-#clear-btn {margin: 10px 0; padding: 8px 16px; font-size: 16px; cursor: pointer;}
-</style>
 </head>
 <body>
+  <!-- 摄像头预览区 -->
   <div><canvas id="preview"></canvas></div>
-  <button id="clear-btn">スキャン結果をクリア</button>
-  <textarea id="jan" rows="8" cols="40"></textarea>
+
+  <!-- 条码类型选择区 -->
+  <div class="barcode-types">
+    <h4>选择要识别的条码类型：</h4>
+    <div id="barcode-type-container"></div>
+  </div>
+
+  <!-- 功能按钮 -->
+  <div class="btn-group">
+    <button id="clear-btn">清空扫描结果</button>
+  </div>
+
+  <!-- 结果显示区 -->
+  <textarea id="jan" rows="8" cols="40" placeholder="扫描到的条码会显示在这里..."></textarea>
 </body>
 </html>
