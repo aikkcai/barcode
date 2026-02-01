@@ -3,40 +3,49 @@
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=0.1, maximum-scale=4,user-scalable=yes">
-<!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <style>
-/* 新增：表格样式，适配手机 */
+/* 表格样式：完整展示，移除滚动限制 */
 .barcode-table {
   width: 100%;
   border-collapse: collapse;
-  margin: 10px 0;
-  font-size: 14px;
+  margin: 15px 0;
+  font-size: 13px;
 }
 .barcode-table td {
   border: 1px solid #ddd;
-  padding: 8px;
+  padding: 6px 4px;
   text-align: center;
+  white-space: nowrap; /* 防止条码换行 */
 }
-/* 高亮样式：黄色背景 */
+/* 高亮样式：黄色背景+加粗 */
 .highlight {
   background-color: #fff3cd;
   font-weight: bold;
+  color: #d63384;
 }
-/* 表格容器：添加滚动，适配手机 */
-.table-container {
-  max-height: 200px;
-  overflow-y: auto;
+/* 识别类型选择框样式优化 */
+.type-select {
   margin: 10px 0;
+  font-size: 14px;
 }
-/* 其他样式优化 */
+/* 摄像头预览样式 */
+#preview {
+  max-width: 100%;
+  border: 1px solid #eee;
+}
+/* 结果文本域样式 */
 #jan {
   width: 100%;
   box-sizing: border-box;
+  padding: 8px;
   margin-top: 10px;
+  min-height: 100px;
 }
-#preview {
-  max-width: 100%;
+/* 标题样式 */
+h4 {
+  margin: 10px 0 5px 0;
+  font-size: 15px;
 }
 </style>
 <script>
@@ -44,7 +53,7 @@ var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 var currentReader = "code_128_reader";
 var audioContext;
-// 新增1：定义条码数组（你的指定列表）
+// 目标条码数组
 const TARGET_BARCODES = [
   "P005849", "0019885", "0020554", "0020560", "0025095", "0021609", "0025091", "0025111", "0030830", "0033390",
   "0033393", "0036973", "0036974", "0025115", "0025122", "0030827", "0033384", "0025116", "0025126", "0025127",
@@ -67,9 +76,10 @@ window.addEventListener('load',function(event){
   prev=document.getElementById("preview");
   jan=document.getElementById("jan");
   
+  // 创建识别类型选择框
   createBarcodeTypeSelect();
-  // 新增2：创建条码表格
-  createBarcodeTable();
+  // 创建完整条码表格
+  createFullBarcodeTable();
 
   initAudioContext();
 
@@ -148,7 +158,7 @@ window.addEventListener('load',function(event){
       jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
       
-      // 新增3：识别成功后检查是否在目标列表中，高亮对应单元格
+      // 高亮匹配的条码单元格
       highlightMatchedBarcode(currentCode);
 
       playBeepSound();
@@ -159,16 +169,16 @@ window.addEventListener('load',function(event){
     }
   });
 
+  // 创建识别类型选择框
   function createBarcodeTypeSelect() {
     const selectDiv = document.createElement('div');
-    selectDiv.style.margin = "10px 0";
-    selectDiv.style.fontSize = "14px";
+    selectDiv.className = 'type-select';
     selectDiv.innerHTML = `
-      <div style="margin-bottom:5px;">识别类型：</div>
-      <label style="margin-right:10px;">
+      <h4>选择识别类型</h4>
+      <label style="margin-right:15px;">
         <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
       </label>
-      <label style="margin-right:10px;">
+      <label style="margin-right:15px;">
         <input type="radio" name="barcodeType" value="ean_reader"> EAN-13
       </label>
       <label>
@@ -186,58 +196,50 @@ window.addEventListener('load',function(event){
     });
   }
 
-  // 新增4：创建条码表格（按每行5个条码排版，适配手机）
-  function createBarcodeTable() {
-    const tableContainer = document.createElement('div');
-    tableContainer.className = 'table-container';
-    tableContainer.innerHTML = '<h4 style="margin:5px 0;font-size:15px;">目标条码列表</h4>';
+  // 核心修改：创建完整展示的条码表格（每行6个，适配屏幕）
+  function createFullBarcodeTable() {
+    const tableWrap = document.createElement('div');
+    tableWrap.innerHTML = '<h4>目标条码列表（识别匹配后变黄）</h4>';
     
     const table = document.createElement('table');
     table.className = 'barcode-table';
     let row = document.createElement('tr');
     let cellCount = 0;
 
-    // 遍历条码数组，生成表格单元格
     TARGET_BARCODES.forEach((code, index) => {
       const td = document.createElement('td');
       td.textContent = code;
-      td.dataset.code = code; // 存储条码值到data属性，方便后续匹配
+      td.dataset.code = code;
       row.appendChild(td);
       cellCount++;
 
-      // 每5个单元格换一行
-      if (cellCount >= 5) {
+      // 每行显示6个条码，平衡宽度和行数
+      if (cellCount >= 6) {
         table.appendChild(row);
         row = document.createElement('tr');
         cellCount = 0;
       }
 
-      // 处理最后一行不足5个的情况
+      // 处理最后一行剩余条码
       if (index === TARGET_BARCODES.length - 1 && cellCount > 0) {
         table.appendChild(row);
       }
     });
 
-    tableContainer.appendChild(table);
-    // 插入到类型选择框和摄像头之间
-    const selectDiv = document.querySelector('div[style="margin: 10px 0; font-size: 14px;"]');
-    document.body.insertBefore(tableContainer, selectDiv.nextSibling);
+    tableWrap.appendChild(table);
+    // 插入到摄像头预览下方
+    document.body.insertBefore(tableWrap, jan.parentNode);
   }
 
-  // 新增5：高亮匹配的条码单元格
+  // 高亮匹配的单元格
   function highlightMatchedBarcode(code) {
-    // 查找表格中对应条码的单元格
     const targetCell = document.querySelector(`td[data-code="${code}"]`);
     if (targetCell) {
-      // 添加黄色高亮样式
       targetCell.classList.add('highlight');
-      // 可选：3秒后取消高亮（如需持续高亮可删除此段）
-      // setTimeout(() => {
-      //   targetCell.classList.remove('highlight');
-      // }, 3000);
     }
   }
 
+  // 音频初始化
   function initAudioContext() {
     try {
       window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -247,6 +249,7 @@ window.addEventListener('load',function(event){
     }
   }
 
+  // 播放提示音
   function playBeepSound() {
     if (!audioContext) return;
     
@@ -268,6 +271,7 @@ window.addEventListener('load',function(event){
     oscillator.stop(audioContext.currentTime + 0.1);
   }
 
+  // 粤语播报
   function speakCantonese(code) {
     if (!('speechSynthesis' in window)) {
       console.warn("语音合成不支持");
@@ -290,6 +294,6 @@ window.addEventListener('load',function(event){
 </head>
 <body>
   <div><canvas id="preview"></canvas></div>
-  <textarea id="jan" rows="8" cols="40"></textarea>
+  <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
 </body>
 </html>
