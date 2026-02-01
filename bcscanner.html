@@ -6,191 +6,166 @@
 <!-- quaggaJSの読み込み -->
 <script src="https://cdn.rawgit.com/serratus/quaggaJS/0420d5e0/dist/quagga.min.js"></script>
 <style>
-/* 整体样式优化 */
-* {box-sizing: border-box; margin: 0; padding: 0;}
-body {padding: 15px; font-family: Arial, sans-serif;}
-#preview {
-  margin-bottom: 15px;
-  border: 1px solid #ddd;
-  max-width: 100%;
-}
-/* 条码类型提示区（仅显示当前识别类型） */
-.barcode-types {
-  margin: 15px 0;
-  padding: 10px;
+/* 新增：条码类型选择区样式，适配手机 */
+.barcode-type-select {
+  margin: 10px 0;
+  padding: 8px;
   border: 1px solid #eee;
-  border-radius: 6px;
+  border-radius: 4px;
 }
-.barcode-types h4 {
-  margin-bottom: 8px;
-  font-size: 16px;
-  color: #333;
-}
-.type-tip {
-  color: #666;
+.barcode-type-select label {
+  display: inline-block;
+  margin-right: 15px;
+  cursor: pointer;
   font-size: 14px;
 }
-/* 按钮样式 */
-.btn-group {
-  display: flex;
-  gap: 10px;
-  margin: 10px 0;
-}
-.btn-group button {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  font-size: 16px;
-  cursor: pointer;
-}
-#clear-btn {background: #6c757d; color: white;}
-/* 文本域样式 */
+/* 优化textarea样式，避免被遮挡 */
 #jan {
   width: 100%;
-  padding: 10px;
-  font-size: 16px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  min-height: 120px;
-  resize: vertical;
+  box-sizing: border-box;
+  padding: 8px;
+  margin-top: 10px;
+}
+/* 优化canvas显示 */
+#preview {
+  max-width: 100%;
 }
 </style>
 <script>
-var DetectedCount=0, DetectedCode="";
-var video, tmp, tmp_ctx, jan, prev, prev_ctx, w, h, mw, mh, x1, y1;
-var scannedCodes = new Set(); // 已识别的条码（去重）
-// 固定只识别Code128，无需动态选择
-var selectedReaders = ["code_128_reader"];
+var DetectedCount=0,DetectedCode="";
+var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
+// 新增：存储当前选中的条码识别类型，默认Code128
+var currentReader = "code_128_reader";
 
 window.addEventListener('load',function(event){
-  // 初始化DOM元素
-  prev = document.getElementById("preview");
-  prev_ctx = prev.getContext("2d", {willReadFrequently:true});
+  video=document.createElement('video');
+  video.setAttribute("autoplay","");
+  video.setAttribute("muted","");
+  video.setAttribute("playsinline","");
+  video.onloadedmetadata = function(e){video.play();};
+  prev=document.getElementById("preview");
+  prev_ctx=prev.getContext("2d", {willReadFrequently:true});
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
-  jan = document.getElementById("jan");
+  jan=document.getElementById("jan");
 
-  // 初始化摄像头
-  initCamera();
+  // 新增：初始化条码类型选择控件
+  initBarcodeTypeSelect();
 
-  // 清空按钮事件
-  document.getElementById('clear-btn').addEventListener('click', function() {
-    jan.value = '';
-    scannedCodes.clear();
-    DetectedCode = '';
-    DetectedCount = 0;
-  });
-});
+  // A permission dialog for camera access will appear
+  navigator.mediaDevices.getUserMedia(
+    // Microphone off, camera settings: prefer rear camera, prefer 640×480
+    {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
+  ).then( // When permission is granted
+    function(stream){
+      video.srcObject = stream;
+      // Scan every 0.5 seconds
+      setTimeout(Scan,500,true);
+    }
+  ).catch( // When permission is denied
+    function(err){jan.value+=err+'\n';}
+  );
 
-// 初始化摄像头
-function initCamera() {
-  video = document.createElement('video');
-  video.setAttribute("autoplay", "");
-  video.setAttribute("muted", "");
-  video.setAttribute("playsinline", "");
-  video.onloadedmetadata = function(e) {video.play();};
+  function Scan(first){
+    if(first){
+      // Selected width and height
+      w=video.videoWidth;
+      h=video.videoHeight;
+      // Display size on screen
+      prev.style.width=(w/2)+"px";
+      prev.style.height=(h/2)+"px";
+      // Internal canvas size
+      prev.setAttribute("width",w);
+      prev.setAttribute("height",h);
+      mw=w*0.5;
+      mh=w*0.2;
+      x1=(w-mw)/2;
+      y1=(h-mh)/2;
+    }
+    prev_ctx.drawImage(video,0,0,w,h);
+    prev_ctx.beginPath();
+    prev_ctx.strokeStyle="rgb(255,0,0)";
+    prev_ctx.lineWidth=2;
+    prev_ctx.rect(x1,y1,mw,mh);
+    prev_ctx.stroke();
+    tmp.setAttribute("width",mw);
+    tmp.setAttribute("height",mh);
+    tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
 
-  navigator.mediaDevices.getUserMedia({
-    "audio": false,
-    "video": {"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}
-  }).then(function(stream){
-    video.srcObject = stream;
-    setTimeout(Scan, 500, true);
-  }).catch(function(err){
-    jan.value += "カメラ権限エラー：" + err + '\n';
-  });
-}
-
-// 扫描逻辑
-function Scan(first){
-  if(first){
-    w = video.videoWidth;
-    h = video.videoHeight;
-    prev.style.width = (w/2) + "px";
-    prev.style.height = (h/2) + "px";
-    prev.setAttribute("width", w);
-    prev.setAttribute("height", h);
-    mw = w * 0.5;
-    mh = w * 0.2;
-    x1 = (w - mw)/2;
-    y1 = (h - mh)/2;
+    tmp.toBlob(function(blob){
+      let reader = new FileReader();
+      reader.onload=function(){
+        let config={
+          decoder: {
+            // 改动：使用当前选中的识别类型（默认code_128_reader）
+            readers: [currentReader],
+            multiple: false, // Do not decode multiple barcodes at once
+          },
+          locator:{patchSize:"large",halfSample:false},
+          locate:false,
+          src:reader.result,
+        };
+        Quagga.decodeSingle(config,function(){});
+      }
+      reader.readAsDataURL(blob);
+    });
+    setTimeout(Scan,50,false);
   }
 
-  // 绘制摄像头画面和扫描框
-  prev_ctx.drawImage(video, 0, 0, w, h);
-  prev_ctx.beginPath();
-  prev_ctx.strokeStyle = "rgb(255,0,0)";
-  prev_ctx.lineWidth = 2;
-  prev_ctx.rect(x1, y1, mw, mh);
-  prev_ctx.stroke();
-
-  // 裁剪扫描区域并识别
-  tmp.setAttribute("width", mw);
-  tmp.setAttribute("height", mh);
-  tmp_ctx.drawImage(prev, x1, y1, mw, mh, 0, 0, mw, mh);
-
-  tmp.toBlob(function(blob){
-    let reader = new FileReader();
-    reader.onload = function(){
-      let config = {
-        decoder: {
-          readers: selectedReaders, // 固定使用Code128识别器
-          multiple: false
-        },
-        locator: {patchSize:"large", halfSample:true},
-        locate: true,
-        src: reader.result
-      };
-      Quagga.decodeSingle(config, function(){});
-    };
-    reader.readAsDataURL(blob);
+  Quagga.onDetected(function (result) {
+    // Because misreads are common, treat it as successful only if the same value appears 3 times in a row
+    if(DetectedCode==result.codeResult.code){
+      DetectedCount++;
+    }else{
+      DetectedCount=0;
+      DetectedCode=result.codeResult.code;
+    }
+    if(DetectedCount>=3){
+      console.log(result.codeResult.code);
+      jan.value+=result.codeResult.code+'\n';
+      jan.scrollTop=jan.scrollHeight;
+      DetectedCode='';
+      DetectedCount=0;
+    }
   });
 
-  setTimeout(Scan, 200, false);
-}
+  // 新增：初始化条码类型选择控件
+  function initBarcodeTypeSelect() {
+    // 创建选择区容器
+    const selectContainer = document.createElement('div');
+    selectContainer.className = 'barcode-type-select';
+    selectContainer.innerHTML = `
+      <div style="font-size:16px;margin-bottom:5px;">选择识别类型（默认Code128）：</div>
+      <label>
+        <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
+      </label>
+      <label>
+        <input type="radio" name="barcodeType" value="ean_reader"> EAN-13
+      </label>
+      <label>
+        <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
+      </label>
+    `;
+    // 插入到canvas下方
+    prev.parentNode.insertAfter(selectContainer, prev);
 
-// 识别结果处理
-Quagga.onDetected(function (result) {
-  const currentCode = result.codeResult.code;
-  // 跳过已识别的条码
-  if (scannedCodes.has(currentCode)) return;
-
-  // 防误读：连续3次识别相同条码才确认
-  if(DetectedCode === currentCode){
-    DetectedCount++;
-  } else {
-    DetectedCount = 0;
-    DetectedCode = currentCode;
-  }
-
-  if(DetectedCount >= 3){
-    console.log("识别到Code128条码：", currentCode);
-    jan.value += currentCode + '\n';
-    jan.scrollTop = jan.scrollHeight;
-    scannedCodes.add(currentCode);
-    DetectedCode = '';
-    DetectedCount = 0;
+    // 绑定选择事件
+    const radioButtons = document.querySelectorAll('input[name="barcodeType"]');
+    radioButtons.forEach(radio => {
+      radio.addEventListener('change', function() {
+        currentReader = this.value;
+        console.log("切换为识别类型：", currentReader);
+        // 切换类型后重置计数，避免残留
+        DetectedCount = 0;
+        DetectedCode = "";
+      });
+    });
   }
 });
 </script>
 </head>
 <body>
-  <!-- 摄像头预览区 -->
   <div><canvas id="preview"></canvas></div>
-
-  <!-- 条码类型提示（仅显示当前识别类型） -->
-  <div class="barcode-types">
-    <h4>当前识别类型：</h4>
-    <div class="type-tip">Code128（物流条码）</div>
-  </div>
-
-  <!-- 功能按钮 -->
-  <div class="btn-group">
-    <button id="clear-btn">清空扫描结果</button>
-  </div>
-
-  <!-- 结果显示区 -->
-  <textarea id="jan" rows="8" cols="40" placeholder="扫描到的Code128条码会显示在这里..."></textarea>
+  <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
