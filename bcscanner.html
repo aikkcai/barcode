@@ -8,30 +8,29 @@
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
-// 新增：当前选中的识别类型，默认Code128
 var currentReader = "code_128_reader";
+// 新增：创建音频上下文和提示音
+var audioContext;
 
 window.addEventListener('load',function(event){
-  // 1. 先获取核心DOM元素（确保canvas/textarea已加载）
   prev=document.getElementById("preview");
   jan=document.getElementById("jan");
   
-  // 2. 新增：创建条码类型选择控件（放在canvas上方，避免遮挡）
   createBarcodeTypeSelect();
 
-  // 3. 初始化canvas上下文
+  // 新增：初始化音频上下文（解决浏览器音频策略限制）
+  initAudioContext();
+
   prev_ctx=prev.getContext("2d", {willReadFrequently:true});
   tmp = document.createElement('canvas');
   tmp_ctx = tmp.getContext("2d", {willReadFrequently:true});
 
-  // 4. 初始化视频元素
   video=document.createElement('video');
   video.setAttribute("autoplay","");
   video.setAttribute("muted","");
   video.setAttribute("playsinline","");
   video.onloadedmetadata = function(e){video.play();};
 
-  // 5. 请求摄像头权限
   navigator.mediaDevices.getUserMedia(
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
   ).then(function(stream){
@@ -41,12 +40,10 @@ window.addEventListener('load',function(event){
     jan.value+=err+'\n';
   });
 
-  // 扫描核心函数（完全保留原逻辑）
   function Scan(first){
     if(first){
       w=video.videoWidth;
       h=video.videoHeight;
-      // 关键：恢复canvas显示尺寸，避免消失
       prev.style.width = (w/2) + "px";
       prev.style.height = (h/2) + "px";
       prev.width = w;
@@ -56,16 +53,13 @@ window.addEventListener('load',function(event){
       x1=(w-mw)/2;
       y1=(h-mh)/2;
     }
-    // 绘制摄像头画面（核心：确保画面渲染）
     prev_ctx.drawImage(video,0,0,w,h);
-    // 绘制红色扫描框
     prev_ctx.beginPath();
     prev_ctx.strokeStyle="rgb(255,0,0)";
     prev_ctx.lineWidth=2;
     prev_ctx.rect(x1,y1,mw,mh);
     prev_ctx.stroke();
 
-    // 裁剪扫描区域并识别
     tmp.width=mw;
     tmp.height=mh;
     tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
@@ -75,7 +69,7 @@ window.addEventListener('load',function(event){
       reader.onload=function(){
         let config={
           decoder: {
-            readers: [currentReader], // 使用选中的类型（默认Code128）
+            readers: [currentReader],
             multiple: false,
           },
           locator:{patchSize:"large",halfSample:false},
@@ -89,26 +83,29 @@ window.addEventListener('load',function(event){
     setTimeout(Scan,50,false);
   }
 
-  // 识别结果处理（完全保留原逻辑）
   Quagga.onDetected(function (result) {
-    if(DetectedCode==result.codeResult.code){
+    const currentCode = result.codeResult.code;
+    if(DetectedCode==currentCode){
       DetectedCount++;
     }else{
       DetectedCount=0;
-      DetectedCode=result.codeResult.code;
+      DetectedCode=currentCode;
     }
     if(DetectedCount>=3){
       console.log(result.codeResult.code);
-      jan.value+=result.codeResult.code+'\n';
+      jan.value+=currentCode+'\n';
       jan.scrollTop=jan.scrollHeight;
+      
+      // 新增：识别成功后播放提示音+粤语播报
+      playBeepSound();
+      speakCantonese(currentCode);
+
       DetectedCode='';
       DetectedCount=0;
     }
   });
 
-  // 新增：创建条码类型选择控件（极简样式，不影响摄像头）
   function createBarcodeTypeSelect() {
-    // 创建容器
     const selectDiv = document.createElement('div');
     selectDiv.style.margin = "10px 0";
     selectDiv.style.fontSize = "14px";
@@ -124,10 +121,8 @@ window.addEventListener('load',function(event){
         <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
       </label>
     `;
-    // 插入到canvas上方（避免遮挡摄像头画面）
     document.body.insertBefore(selectDiv, prev.parentNode);
 
-    // 绑定切换事件
     document.querySelectorAll('input[name="barcodeType"]').forEach(radio => {
       radio.addEventListener('change', function() {
         currentReader = this.value;
@@ -136,13 +131,69 @@ window.addEventListener('load',function(event){
       });
     });
   }
+
+  // 新增1：初始化音频上下文（解决浏览器自动播放限制）
+  function initAudioContext() {
+    try {
+      window.AudioContext = window.AudioContext || window.webkitAudioContext;
+      audioContext = new AudioContext();
+    } catch (e) {
+      console.warn("音频功能不支持：", e);
+    }
+  }
+
+  // 新增2：播放BIT提示音（纯代码生成，无需外部音频文件）
+  function playBeepSound() {
+    if (!audioContext) return;
+    
+    // 重启音频上下文（解决浏览器暂停策略）
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+
+    // 创建440Hz的提示音（BIT声）
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    
+    oscillator.type = 'sine'; // 正弦波，音质更清脆
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime); // 440Hz = A调
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // 音量（0-1）
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+    
+    // 播放100ms
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.1);
+  }
+
+  // 新增3：粤语语音播报条码数字
+  function speakCantonese(code) {
+    // 检查浏览器是否支持语音合成
+    if (!('speechSynthesis' in window)) {
+      console.warn("语音合成不支持");
+      return;
+    }
+
+    // 清空之前的播报队列
+    window.speechSynthesis.cancel();
+
+    // 创建语音播报实例
+    const utterance = new SpeechSynthesisUtterance();
+    utterance.text = `识别到条码：${code}`;
+    utterance.lang = 'yue-HK'; // 粤语（香港）
+    utterance.volume = 1; // 音量（0-1）
+    utterance.rate = 0.9; // 语速（0.1-10）
+    utterance.pitch = 1; // 音调（0-2）
+
+    // 播放语音
+    window.speechSynthesis.speak(utterance);
+  }
 });
 </script>
 </head>
 <body>
-  <!-- 摄像头预览canvas（确保无样式覆盖） -->
   <div><canvas id="preview"></canvas></div>
-  <!-- 结果显示textarea -->
   <textarea id="jan" rows="8" cols="40"></textarea>
 </body>
 </html>
