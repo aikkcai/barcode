@@ -275,7 +275,8 @@ window.addEventListener('load',function(event){
   
   <!-- 摄像头画布 -->
   <canvas id="preview"></canvas>
-
+  <!-- 识别结果文本域 -->
+  <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
   <!-- 目标条码表格：按指定序号和条码对应 -->
   <h4>目标条码列表（识别匹配后整行变黄）</h4>
   <table id="targetBarcodeTable">
@@ -441,8 +442,8 @@ window.addEventListener('load',function(event){
     </tbody>
   </table>
 
-  <!-- 识别结果文本域 -->
-  <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
+
 </body>
 </html>
+
 
