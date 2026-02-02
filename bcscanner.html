@@ -77,12 +77,48 @@ h4 {
   margin: 10px 0 5px 0;
   font-size: 15px;
 }
+/* 复制按钮样式 */
+#copyTableBtn {
+  padding: 8px 16px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin: 10px 0;
+}
+#copyTableBtn:hover {
+  background-color: #0056b3;
+}
+#copyTableBtn:active {
+  background-color: #004085;
+}
+/* 复制提示样式 */
+.copy-toast {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background-color: #28a745;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 9999;
+}
+.copy-toast.show {
+  opacity: 1;
+}
 </style>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
 var currentReader = "code_128_reader";
 var audioContext;
+// ========== 新增：存储已识别的条码，避免重复 ==========
+var scannedCodes = new Set();
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -91,6 +127,9 @@ window.addEventListener('load',function(event){
   
   // 创建识别类型选择框
   createBarcodeTypeSelect();
+
+  // ========== 新增：创建复制表格按钮 ==========
+  createCopyTableButton();
 
   // 初始化音频
   initAudioContext();
@@ -167,6 +206,12 @@ window.addEventListener('load',function(event){
   // 识别结果处理
   Quagga.onDetected(function (result) {
     const currentCode = result.codeResult.code;
+    
+    // ========== 关键修改：检查是否已识别过该条码 ==========
+    if (scannedCodes.has(currentCode)) {
+      return; // 如果已识别过，直接返回，不处理
+    }
+
     if(DetectedCode==currentCode){
       DetectedCount++;
     }else{
@@ -174,7 +219,6 @@ window.addEventListener('load',function(event){
       DetectedCode=currentCode;
     }
     if(DetectedCount>=3){
-      // ========== 关键修改：获取序号并拼接 ==========
       // 查找匹配行并获取序号
       const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${currentCode}"]`);
       let displayText = currentCode;
@@ -192,6 +236,9 @@ window.addEventListener('load',function(event){
       // 播放提示音+粤语播报
       playBeepSound();
       speakCantonese(currentCode);
+
+      // ========== 关键修改：将识别过的条码加入集合 ==========
+      scannedCodes.add(currentCode);
 
       DetectedCode='';
       DetectedCount=0;
@@ -223,6 +270,60 @@ window.addEventListener('load',function(event){
         DetectedCode="";
       });
     });
+  }
+
+  // ========== 新增：创建复制表格按钮 ==========
+  function createCopyTableButton() {
+    // 创建按钮容器
+    const btnContainer = document.createElement('div');
+    btnContainer.style.margin = '10px 0';
+    
+    // 创建复制按钮
+    const copyBtn = document.createElement('button');
+    copyBtn.id = 'copyTableBtn';
+    copyBtn.textContent = '复制条码表格';
+    copyBtn.addEventListener('click', copyTableContent);
+    
+    // 创建提示框
+    const toast = document.createElement('div');
+    toast.className = 'copy-toast';
+    toast.textContent = '表格内容已复制！';
+    document.body.appendChild(toast);
+    
+    btnContainer.appendChild(copyBtn);
+    
+    // 插入到表格上方
+    const table = document.getElementById('targetBarcodeTable');
+    table.parentNode.insertBefore(btnContainer, table);
+  }
+
+  // ========== 新增：复制表格内容函数 ==========
+  function copyTableContent() {
+    const table = document.getElementById('targetBarcodeTable');
+    let tableText = '序号\t条码\n'; // 制表符分隔，方便粘贴到Excel
+    
+    // 遍历表格行
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+      const serial = row.querySelector('td:first-child').textContent.trim();
+      const code = row.querySelector('td:last-child').textContent.trim();
+      tableText += `${serial}\t${code}\n`;
+    });
+    
+    // 复制到剪贴板
+    navigator.clipboard.writeText(tableText)
+      .then(() => {
+        // 显示提示
+        const toast = document.querySelector('.copy-toast');
+        toast.classList.add('show');
+        setTimeout(() => {
+          toast.classList.remove('show');
+        }, 2000);
+      })
+      .catch(err => {
+        console.error('复制失败:', err);
+        jan.value += '复制表格失败：' + err + '\n';
+      });
   }
 
   // 高亮+闪烁匹配的行：先闪红色，再保持黄色高亮
@@ -462,4 +563,3 @@ window.addEventListener('load',function(event){
   </table>
 </body>
 </html>
-
