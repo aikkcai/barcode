@@ -181,7 +181,7 @@ window.addEventListener('load',function(event){
       if (targetRow) {
         // 获取序号列的文本内容
         const serialNumber = targetRow.querySelector('td:first-child').textContent;
-        displayText = `${currentCode} 序號為 ${serialNumber}`;
+        displayText = `${currentCode} 序號: ${serialNumber}`;
       }
       // 写入文本域
       jan.value+=displayText+'\n';
@@ -462,3 +462,4 @@ window.addEventListener('load',function(event){
   </table>
 </body>
 </html>
+
