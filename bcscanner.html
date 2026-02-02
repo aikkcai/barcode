@@ -77,22 +77,40 @@ h4 {
   margin: 10px 0 5px 0;
   font-size: 15px;
 }
-/* 复制按钮样式 */
-#copyTableBtn {
+/* 按钮通用样式 */
+.btn {
   padding: 8px 16px;
-  background-color: #007bff;
-  color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  margin: 10px 0;
+  margin: 5px 0;
+}
+/* 复制按钮样式 */
+#copyTableBtn {
+  background-color: #007bff;
+  color: white;
 }
 #copyTableBtn:hover {
   background-color: #0056b3;
 }
 #copyTableBtn:active {
   background-color: #004085;
+}
+/* 刷新摄像头按钮样式 */
+#refreshCamBtn {
+  background-color: #28a745;
+  color: white;
+}
+#refreshCamBtn:hover {
+  background-color: #218838;
+}
+#refreshCamBtn:active {
+  background-color: #1e7e34;
+}
+#refreshCamBtn.loading {
+  background-color: #6c757d;
+  cursor: not-allowed;
 }
 /* 复制提示样式 */
 .copy-toast {
@@ -111,6 +129,23 @@ h4 {
 .copy-toast.show {
   opacity: 1;
 }
+/* 摄像头刷新提示 */
+.cam-toast {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  background-color: #17a2b8;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 9999;
+}
+.cam-toast.show {
+  opacity: 1;
+}
 </style>
 <script>
 var DetectedCount=0,DetectedCode="";
@@ -119,6 +154,10 @@ var currentReader = "code_128_reader";
 var audioContext;
 // ========== 新增：存储已识别的条码，避免重复 ==========
 var scannedCodes = new Set();
+// ========== 新增：存储摄像头流，用于关闭和重启 ==========
+var mediaStream = null;
+// ========== 新增：扫描定时器，用于停止和重启扫描 ==========
+var scanTimer = null;
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -127,6 +166,9 @@ window.addEventListener('load',function(event){
   
   // 创建识别类型选择框
   createBarcodeTypeSelect();
+
+  // ========== 新增：创建刷新摄像头按钮 ==========
+  createRefreshCamButton();
 
   // ========== 新增：创建复制表格按钮 ==========
   createCopyTableButton();
@@ -146,249 +188,372 @@ window.addEventListener('load',function(event){
   video.setAttribute("playsinline","");
   video.onloadedmetadata = function(e){video.play();};
 
+  // 初始化摄像头
+  initCamera();
+});
+
+// ========== 新增：初始化摄像头函数 ==========
+function initCamera() {
   // 请求摄像头权限
   navigator.mediaDevices.getUserMedia(
     {"audio":false,"video":{"facingMode":"environment","width":{"ideal":640},"height":{"ideal":480}}}
   ).then(function(stream){
+    // 保存流引用，用于后续关闭
+    mediaStream = stream;
     video.srcObject = stream;
-    setTimeout(Scan,500,true);
+    
+    // 清除之前的定时器
+    if (scanTimer) {
+      clearTimeout(scanTimer);
+    }
+    
+    // 启动扫描
+    scanTimer = setTimeout(Scan,500,true);
+    
+    // 显示摄像头刷新成功提示
+    showCamToast("摄像头已重新连接！");
+    
+    // 恢复按钮状态
+    const refreshBtn = document.getElementById('refreshCamBtn');
+    refreshBtn.classList.remove('loading');
+    refreshBtn.textContent = '刷新摄像头';
+    
   }).catch(function(err){
     jan.value+=err+'\n';
+    
+    // 恢复按钮状态
+    const refreshBtn = document.getElementById('refreshCamBtn');
+    refreshBtn.classList.remove('loading');
+    refreshBtn.textContent = '刷新摄像头';
+    
+    // 显示错误提示
+    showCamToast("摄像头连接失败：" + err.message, true);
   });
+}
 
-  // 扫描函数
-  function Scan(first){
-    if(first){
-      w=video.videoWidth || 640; // 兜底尺寸
-      h=video.videoHeight || 480;
-      prev.style.width = (w/2) + "px";
-      prev.style.height = (h/2) + "px";
-      prev.width = w;
-      prev.height = h;
-      mw=w*0.5;
-      mh=w*0.2;
-      x1=(w-mw)/2;
-      y1=(h-mh)/2;
-    }
-    // 绘制摄像头画面
-    prev_ctx.drawImage(video,0,0,w,h);
-    // 绘制扫描框
-    prev_ctx.beginPath();
-    prev_ctx.strokeStyle="rgb(255,0,0)";
-    prev_ctx.lineWidth=2;
-    prev_ctx.rect(x1,y1,mw,mh);
-    prev_ctx.stroke();
-
-    // 裁剪识别区域
-    tmp.width=mw;
-    tmp.height=mh;
-    tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
-
-    tmp.toBlob(function(blob){
-      let reader = new FileReader();
-      reader.onload=function(){
-        let config={
-          decoder: {
-            readers: [currentReader],
-            multiple: false,
-          },
-          locator:{patchSize:"large",halfSample:false},
-          locate:false,
-          src:reader.result,
-        };
-        Quagga.decodeSingle(config,function(){});
-      }
-      reader.readAsDataURL(blob);
-    });
-    setTimeout(Scan,50,false);
+// ========== 新增：刷新摄像头函数 ==========
+function refreshCamera() {
+  const refreshBtn = document.getElementById('refreshCamBtn');
+  refreshBtn.classList.add('loading');
+  refreshBtn.textContent = '刷新中...';
+  
+  // 清除扫描定时器
+  if (scanTimer) {
+    clearTimeout(scanTimer);
+    scanTimer = null;
   }
-
-  // 识别结果处理
-  Quagga.onDetected(function (result) {
-    const currentCode = result.codeResult.code;
-    
-    // ========== 关键修改：检查是否已识别过该条码 ==========
-    if (scannedCodes.has(currentCode)) {
-      playBeepSound();
-      return; // 如果已识别过，直接返回，不处理
-    }
-
-    if(DetectedCode==currentCode){
-      DetectedCount++;
-    }else{
-      DetectedCount=0;
-      DetectedCode=currentCode;
-    }
-    if(DetectedCount>=3){
-      // 查找匹配行并获取序号
-      const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${currentCode}"]`);
-      let displayText = currentCode;
-      if (targetRow) {
-        // 获取序号列的文本内容
-        const serialNumber = targetRow.querySelector('td:first-child').textContent;
-        displayText = `${currentCode} 序號: ${serialNumber}`;
-      }
-      // 写入文本域
-      jan.value+=displayText+'\n';
-      jan.scrollTop=jan.scrollHeight;
-      
-      // 高亮+闪烁HTML表格中匹配的条码行
-      highlightAndFlashBarcode(currentCode);
-      // 播放提示音+粤语播报
-      playBeepSound();
-      speakCantonese(currentCode);
-
-      // ========== 关键修改：将识别过的条码加入集合 ==========
-      scannedCodes.add(currentCode);
-
-      DetectedCode='';
-      DetectedCount=0;
-    }
-  });
-
-  // 创建识别类型选择框
-  function createBarcodeTypeSelect() {
-    const selectDiv = document.createElement('div');
-    selectDiv.className = 'type-select';
-    selectDiv.innerHTML = `
-      <h4>选择识别类型</h4>
-      <label style="margin-right:10px;">
-        <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
-      </label>
-      <label style="margin-right:10px;">
-        <input type="radio" name="barcodeType" value="ean_reader"> EAN-13
-      </label>
-      <label>
-        <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
-      </label>
-    `;
-    document.body.insertBefore(selectDiv, document.body.firstChild);
-
-    document.querySelectorAll('input[name="barcodeType"]').forEach(radio => {
-      radio.addEventListener('change', function() {
-        currentReader = this.value;
-        DetectedCount=0;
-        DetectedCode="";
-      });
+  
+  // 关闭现有摄像头流
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => {
+      track.stop();
     });
+    mediaStream = null;
   }
+  
+  // 清空视频源
+  video.srcObject = null;
+  
+  // 清空画布
+  if (prev_ctx) {
+    prev_ctx.clearRect(0, 0, prev.width, prev.height);
+  }
+  
+  // 重新初始化摄像头
+  setTimeout(initCamera, 500);
+}
 
-  // ========== 新增：创建复制表格按钮 ==========
-  function createCopyTableButton() {
-    // 创建按钮容器
-    const btnContainer = document.createElement('div');
-    btnContainer.style.margin = '10px 0';
-    
-    // 创建复制按钮
-    const copyBtn = document.createElement('button');
-    copyBtn.id = 'copyTableBtn';
-    copyBtn.textContent = '复制条码表格';
-    copyBtn.addEventListener('click', copyTableContent);
-    
-    // 创建提示框
-    const toast = document.createElement('div');
-    toast.className = 'copy-toast';
-    toast.textContent = '表格内容已复制！';
+// ========== 新增：显示摄像头提示函数 ==========
+function showCamToast(message, isError = false) {
+  // 创建提示框（如果不存在）
+  let toast = document.querySelector('.cam-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'cam-toast';
     document.body.appendChild(toast);
-    
-    btnContainer.appendChild(copyBtn);
-    
-    // 插入到表格上方
-    const table = document.getElementById('targetBarcodeTable');
-    table.parentNode.insertBefore(btnContainer, table);
+  }
+  
+  // 设置提示内容和样式
+  toast.textContent = message;
+  if (isError) {
+    toast.style.backgroundColor = '#dc3545'; // 红色错误提示
+  } else {
+    toast.style.backgroundColor = '#17a2b8'; // 蓝色成功提示
+  }
+  
+  // 显示提示
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3000);
+}
+
+// 扫描函数
+function Scan(first){
+  if(first){
+    w=video.videoWidth || 640; // 兜底尺寸
+    h=video.videoHeight || 480;
+    prev.style.width = (w/2) + "px";
+    prev.style.height = (h/2) + "px";
+    prev.width = w;
+    prev.height = h;
+    mw=w*0.5;
+    mh=w*0.2;
+    x1=(w-mw)/2;
+    y1=(h-mh)/2;
+  }
+  // 绘制摄像头画面
+  prev_ctx.drawImage(video,0,0,w,h);
+  // 绘制扫描框
+  prev_ctx.beginPath();
+  prev_ctx.strokeStyle="rgb(255,0,0)";
+  prev_ctx.lineWidth=2;
+  prev_ctx.rect(x1,y1,mw,mh);
+  prev_ctx.stroke();
+
+  // 裁剪识别区域
+  tmp.width=mw;
+  tmp.height=mh;
+  tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
+
+  tmp.toBlob(function(blob){
+    let reader = new FileReader();
+    reader.onload=function(){
+      let config={
+        decoder: {
+          readers: [currentReader],
+          multiple: false,
+        },
+        locator:{patchSize:"large",halfSample:false},
+        locate:false,
+        src:reader.result,
+      };
+      Quagga.decodeSingle(config,function(){});
+    }
+    reader.readAsDataURL(blob);
+  });
+  scanTimer = setTimeout(Scan,50,false);
+}
+
+// 识别结果处理
+Quagga.onDetected(function (result) {
+  const currentCode = result.codeResult.code;
+  
+  // ========== 关键修改：检查是否已识别过该条码 ==========
+  if (scannedCodes.has(currentCode)) {
+    playBeepSound();
+    return; // 如果已识别过，直接返回，不处理
   }
 
-  // ========== 新增：复制表格内容函数 ==========
-  function copyTableContent() {
-    const table = document.getElementById('targetBarcodeTable');
-    let tableText = '序号\t条码\n'; // 制表符分隔，方便粘贴到Excel
-    
-    // 遍历表格行
-    const rows = table.querySelectorAll('tbody tr');
-    rows.forEach(row => {
-      const serial = row.querySelector('td:first-child').textContent.trim();
-      const code = row.querySelector('td:last-child').textContent.trim();
-      tableText += `${serial}\t${code}\n`;
-    });
-    
-    // 复制到剪贴板
-    navigator.clipboard.writeText(tableText)
-      .then(() => {
-        // 显示提示
-        const toast = document.querySelector('.copy-toast');
-        toast.classList.add('show');
-        setTimeout(() => {
-          toast.classList.remove('show');
-        }, 2000);
-      })
-      .catch(err => {
-        console.error('复制失败:', err);
-        jan.value += '复制表格失败：' + err + '\n';
-      });
+  if(DetectedCode==currentCode){
+    DetectedCount++;
+  }else{
+    DetectedCount=0;
+    DetectedCode=currentCode;
   }
-
-  // 高亮+闪烁匹配的行：先闪红色，再保持黄色高亮
-  function highlightAndFlashBarcode(code) {
-    // 查找HTML表格中对应data-code的行
-    const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
+  if(DetectedCount>=3){
+    // 查找匹配行并获取序号
+    const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${currentCode}"]`);
+    let displayText = currentCode;
     if (targetRow) {
-      // 1. 添加闪烁类（红色背景）
-      targetRow.classList.add('flash');
-      // 2. 0.3秒后移除闪烁类，添加永久高亮类（黄色背景）
+      // 获取序号列的文本内容
+      const serialNumber = targetRow.querySelector('td:first-child').textContent;
+      displayText = `${currentCode} 序號: ${serialNumber}`;
+    }
+    // 写入文本域
+    jan.value+=displayText+'\n';
+    jan.scrollTop=jan.scrollHeight;
+    
+    // 高亮+闪烁HTML表格中匹配的条码行
+    highlightAndFlashBarcode(currentCode);
+    // 播放提示音+粤语播报
+    playBeepSound();
+    speakCantonese(currentCode);
+
+    // ========== 关键修改：将识别过的条码加入集合 ==========
+    scannedCodes.add(currentCode);
+
+    DetectedCode='';
+    DetectedCount=0;
+  }
+});
+
+// 创建识别类型选择框
+function createBarcodeTypeSelect() {
+  const selectDiv = document.createElement('div');
+  selectDiv.className = 'type-select';
+  selectDiv.innerHTML = `
+    <h4>选择识别类型</h4>
+    <label style="margin-right:10px;">
+      <input type="radio" name="barcodeType" value="code_128_reader" checked> Code128
+    </label>
+    <label style="margin-right:10px;">
+      <input type="radio" name="barcodeType" value="ean_reader"> EAN-13
+    </label>
+    <label>
+      <input type="radio" name="barcodeType" value="ean_8_reader"> EAN-8
+    </label>
+  `;
+  document.body.insertBefore(selectDiv, document.body.firstChild);
+
+  document.querySelectorAll('input[name="barcodeType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+      currentReader = this.value;
+      DetectedCount=0;
+      DetectedCode="";
+    });
+  });
+}
+
+// ========== 新增：创建刷新摄像头按钮 ==========
+function createRefreshCamButton() {
+  // 创建按钮容器
+  const btnContainer = document.createElement('div');
+  btnContainer.style.margin = '10px 0';
+  
+  // 创建刷新按钮
+  const refreshBtn = document.createElement('button');
+  refreshBtn.id = 'refreshCamBtn';
+  refreshBtn.className = 'btn';
+  refreshBtn.textContent = '刷新摄像头';
+  refreshBtn.addEventListener('click', refreshCamera);
+  
+  btnContainer.appendChild(refreshBtn);
+  
+  // 插入到识别类型选择框之后
+  const typeSelect = document.querySelector('.type-select');
+  typeSelect.parentNode.insertBefore(btnContainer, typeSelect.nextSibling);
+}
+
+// ========== 新增：创建复制表格按钮 ==========
+function createCopyTableButton() {
+  // 创建按钮容器
+  const btnContainer = document.createElement('div');
+  btnContainer.style.margin = '10px 0';
+  
+  // 创建复制按钮
+  const copyBtn = document.createElement('button');
+  copyBtn.id = 'copyTableBtn';
+  copyBtn.className = 'btn';
+  copyBtn.textContent = '复制条码表格';
+  copyBtn.addEventListener('click', copyTableContent);
+  
+  // 创建提示框
+  const toast = document.createElement('div');
+  toast.className = 'copy-toast';
+  toast.textContent = '表格内容已复制！';
+  document.body.appendChild(toast);
+  
+  btnContainer.appendChild(copyBtn);
+  
+  // 插入到表格上方
+  const table = document.getElementById('targetBarcodeTable');
+  table.parentNode.insertBefore(btnContainer, table);
+}
+
+// ========== 新增：复制表格内容函数 ==========
+function copyTableContent() {
+  const table = document.getElementById('targetBarcodeTable');
+  let tableText = '序号\t条码\n'; // 制表符分隔，方便粘贴到Excel
+  
+  // 遍历表格行
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    const serial = row.querySelector('td:first-child').textContent.trim();
+    const code = row.querySelector('td:last-child').textContent.trim();
+    tableText += `${serial}\t${code}\n`;
+  });
+  
+  // 复制到剪贴板
+  navigator.clipboard.writeText(tableText)
+    .then(() => {
+      // 显示提示
+      const toast = document.querySelector('.copy-toast');
+      toast.classList.add('show');
       setTimeout(() => {
-        targetRow.classList.remove('flash');
-        targetRow.classList.add('highlight');
-      }, 300);
-    }
+        toast.classList.remove('show');
+      }, 2000);
+    })
+    .catch(err => {
+      console.error('复制失败:', err);
+      jan.value += '复制表格失败：' + err + '\n';
+    });
+}
+
+// 高亮+闪烁匹配的行：先闪红色，再保持黄色高亮
+function highlightAndFlashBarcode(code) {
+  // 查找HTML表格中对应data-code的行
+  const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
+  if (targetRow) {
+    // 1. 添加闪烁类（红色背景）
+    targetRow.classList.add('flash');
+    // 2. 0.3秒后移除闪烁类，添加永久高亮类（黄色背景）
+    setTimeout(() => {
+      targetRow.classList.remove('flash');
+      targetRow.classList.add('highlight');
+    }, 300);
+  }
+}
+
+// 音频相关函数
+function initAudioContext() {
+  try {
+    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AudioContext();
+  } catch (e) {
+    console.warn("音频功能不支持：", e);
+  }
+}
+
+function playBeepSound() {
+  if (!audioContext) return;
+  
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
   }
 
-  // 音频相关函数
-  function initAudioContext() {
-    try {
-      window.AudioContext = window.AudioContext || window.webkitAudioContext;
-      audioContext = new AudioContext();
-    } catch (e) {
-      console.warn("音频功能不支持：", e);
-    }
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
+  gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  
+  oscillator.start();
+  oscillator.stop(audioContext.currentTime + 0.1);
+}
+
+function speakCantonese(code) {
+  if (!('speechSynthesis' in window)) {
+    console.warn("语音合成不支持");
+    return;
   }
 
-  function playBeepSound() {
-    if (!audioContext) return;
-    
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
-    }
+  window.speechSynthesis.cancel();
 
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-    
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(440, audioContext.currentTime);
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-    
-    oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.1);
+  const utterance = new SpeechSynthesisUtterance();
+  utterance.text = `识别到条码：${code}`;
+  utterance.lang = 'yue-HK';
+  utterance.volume = 1;
+  utterance.rate = 0.9;
+  utterance.pitch = 1;
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// ========== 新增：页面关闭时清理资源 ==========
+window.addEventListener('beforeunload', function() {
+  // 停止扫描定时器
+  if (scanTimer) {
+    clearTimeout(scanTimer);
   }
-
-  function speakCantonese(code) {
-    if (!('speechSynthesis' in window)) {
-      console.warn("语音合成不支持");
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance();
-    utterance.text = `识别到条码：${code}`;
-    utterance.lang = 'yue-HK';
-    utterance.volume = 1;
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-
-    window.speechSynthesis.speak(utterance);
+  
+  // 关闭摄像头流
+  if (mediaStream) {
+    mediaStream.getTracks().forEach(track => track.stop());
   }
 });
 </script>
@@ -564,4 +729,3 @@ window.addEventListener('load',function(event){
   </table>
 </body>
 </html>
-
