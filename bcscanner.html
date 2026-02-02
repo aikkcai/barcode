@@ -174,7 +174,17 @@ window.addEventListener('load',function(event){
       DetectedCode=currentCode;
     }
     if(DetectedCount>=3){
-      jan.value+=currentCode+'\n';
+      // ========== 关键修改：获取序号并拼接 ==========
+      // 查找匹配行并获取序号
+      const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${currentCode}"]`);
+      let displayText = currentCode;
+      if (targetRow) {
+        // 获取序号列的文本内容
+        const serialNumber = targetRow.querySelector('td:first-child').textContent;
+        displayText = `${currentCode} 序號為 ${serialNumber}`;
+      }
+      // 写入文本域
+      jan.value+=displayText+'\n';
       jan.scrollTop=jan.scrollHeight;
       
       // 高亮+闪烁HTML表格中匹配的条码行
@@ -345,7 +355,6 @@ window.addEventListener('load',function(event){
       <tr data-code="0022521"><td>50</td><td>0022521</td></tr>
       <tr data-code="0022522"><td>51</td><td>0022522</td></tr>
       <tr data-code="0022523"><td>52</td><td>0022523</td></tr>
-      <tr data-code="0022524"><td>53</td><td>0022524</td></tr>
       <tr data-code="0044713"><td>54</td><td>0044713</td></tr>
       <tr data-code="0044714"><td>55</td><td>0044714</td></tr>
       <tr data-code="0033632"><td>56</td><td>0033632</td></tr>
@@ -449,7 +458,6 @@ window.addEventListener('load',function(event){
       <tr data-code="0022333"><td>156</td><td>0022333</td></tr>
       <tr data-code="0032135"><td>157</td><td>0032135</td></tr>
       <tr data-code="0032136"><td>158</td><td>0032136</td></tr>
-      <tr data-code="4892218000233"><td>159</td><td>4892218000233</td></tr>
     </tbody>
   </table>
 </body>
