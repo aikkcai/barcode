@@ -209,6 +209,7 @@ window.addEventListener('load',function(event){
     
     // ========== 关键修改：检查是否已识别过该条码 ==========
     if (scannedCodes.has(currentCode)) {
+      playBeepSound();
       return; // 如果已识别过，直接返回，不处理
     }
 
@@ -563,3 +564,4 @@ window.addEventListener('load',function(event){
   </table>
 </body>
 </html>
+
