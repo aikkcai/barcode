@@ -344,7 +344,6 @@ Quagga.onDetected(function (result) {
   // ========== 关键修改：检查是否已识别过该条码 ==========
   if (scannedCodes.has(currentCode)) {
     playBeepSound();
-    flashBackground(); // 🔴 新增：播放提示音时同时闪烁背景
     return; // 如果已识别过，直接返回，不处理
   }
 
@@ -523,6 +522,7 @@ function initAudioContext() {
 }
 
 function playBeepSound() {
+  flashBackground(); // 🔴 新增：播放提示音时同时闪烁背景
   if (!audioContext) return;
   
   if (audioContext.state === 'suspended') {
@@ -746,5 +746,6 @@ window.addEventListener('beforeunload', function() {
   </table>
 </body>
 </html>
+
 
 
