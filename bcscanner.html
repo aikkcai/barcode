@@ -344,6 +344,7 @@ Quagga.onDetected(function (result) {
   // ========== 关键修改：检查是否已识别过该条码 ==========
   if (scannedCodes.has(currentCode)) {
     playBeepSound();
+    flashBackground(); // 🔴 新增：播放提示音时同时闪烁背景
     return; // 如果已识别过，直接返回，不处理
   }
 
@@ -497,6 +498,20 @@ function highlightAndFlashBarcode(code) {
   }
 }
 
+// 背景闪烁黄色效果
+function flashBackground() {
+  // 保存原始背景色
+  const originalBg = document.body.style.backgroundColor;
+  
+  // 设置黄色背景
+  document.body.style.backgroundColor = '#fff3cd';
+  
+  // 0.3秒后恢复原始背景色
+  setTimeout(() => {
+    document.body.style.backgroundColor = originalBg || '';
+  }, 300);
+}
+  
 // 音频相关函数
 function initAudioContext() {
   try {
@@ -731,4 +746,5 @@ window.addEventListener('beforeunload', function() {
   </table>
 </body>
 </html>
+
 
