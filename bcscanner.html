@@ -443,7 +443,7 @@ function createCopyTableButton() {
   const copyBtn = document.createElement('button');
   copyBtn.id = 'copyTableBtn';
   copyBtn.className = 'btn';
-  copyBtn.textContent = '复制条码表格';
+  copyBtn.textContent = 'COPY';
   copyBtn.addEventListener('click', copyTableContent);
   
   // 创建提示框
@@ -595,7 +595,7 @@ window.addEventListener('beforeunload', function() {
   <!-- 识别结果文本域 -->
   <textarea id="jan" rows="8" cols="40" placeholder="识别到的条码会显示在这里..."></textarea>
   <!-- 目标条码表格：按指定序号和条码对应 -->
-  <h4>目标条码列表（识别匹配后先闪红再变黄）</h4>
+  <h4>目标条码列表</h4>
   <table id="targetBarcodeTable">
     <thead>
       <tr>
@@ -759,6 +759,7 @@ window.addEventListener('beforeunload', function() {
   </table>
 </body>
 </html>
+
 
 
 
