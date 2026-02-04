@@ -705,7 +705,6 @@ Quagga.onDetected(function (result) {
       // 相同条码：仅播放提示音和闪烁，不执行其他操作
       playBeepSound();
       highlightAndFlashBarcode(currentCode);
-      flashBackground();
       return; // 直接返回，不执行后续的数量操作和文本记录
     }
     
@@ -1123,4 +1122,5 @@ window.addEventListener('beforeunload', function() {
   </table>
 </body>
 </html>
+
 
