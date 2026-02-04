@@ -9,7 +9,6 @@
 </script>
 
 
-
 <style>
 /* 基础样式：确保布局清晰 */
 * {
@@ -264,6 +263,8 @@ var mediaStream = null;
 var scanTimer = null;
 // ========== Session相关常量 ==========
 const SESSION_KEY = 'barcodeQuantityData';
+// ========== 新增：记录上一次处理的条码 ==========
+var lastProcessedCode = '';
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -506,6 +507,8 @@ function resetAllQuantities() {
     
     // 清空已扫描记录
     scannedCodes.clear();
+    // 清空上一次处理的条码记录
+    lastProcessedCode = '';
     // 保存到Session
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
@@ -697,6 +700,15 @@ Quagga.onDetected(function (result) {
   }
   
   if(DetectedCount>=3){
+    // ========== 核心修改：判断是否与上一次处理的条码相同 ==========
+    if (currentCode === lastProcessedCode) {
+      // 相同条码：仅播放提示音和闪烁，不执行其他操作
+      playBeepSound();
+      highlightAndFlashBarcode(currentCode);
+      flashBackground();
+      return; // 直接返回，不执行后续的数量操作和文本记录
+    }
+    
     let displayText = currentCode;
     let newQuantity = sessionData[currentCode].quantity;
     
@@ -735,6 +747,9 @@ Quagga.onDetected(function (result) {
       playBeepSound();
     }
 
+    // ========== 更新上一次处理的条码记录 ==========
+    lastProcessedCode = currentCode;
+    
     DetectedCode = '';
     DetectedCount = 0;
   }
