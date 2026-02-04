@@ -32,7 +32,7 @@ body {
   margin: 10px 0;
   display: block !important;
 }
-/* 目标条码表格样式（三列：序号+条码+存在） */
+/* 目标条码表格样式（三列：序号+条码+数量） */
 #targetBarcodeTable {
   width: 100%;
   border-collapse: collapse;
@@ -59,7 +59,7 @@ body {
 #targetBarcodeTable td:nth-child(2) {
   width: calc(100% - 160px);
 }
-/* 存在列宽度固定 */
+/* 数量列宽度固定 */
 #targetBarcodeTable td:nth-child(3) {
   width: 80px;
   font-weight: bold;
@@ -120,6 +120,15 @@ h4 {
   background-color: #6c757d;
   cursor: not-allowed;
 }
+/* 重置数量按钮 */
+#resetQtyBtn {
+  background-color: #dc3545;
+  color: white;
+  margin-left: 10px;
+}
+#resetQtyBtn:hover {
+  background-color: #c82333;
+}
 /* 复制提示样式 */
 .copy-toast {
   position: fixed;
@@ -166,6 +175,8 @@ var scannedCodes = new Set();
 var mediaStream = null;
 // ========== 新增：扫描定时器，用于停止和重启扫描 ==========
 var scanTimer = null;
+// ========== Session相关常量 ==========
+const SESSION_KEY = 'barcodeQuantityData';
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -196,11 +207,121 @@ window.addEventListener('load',function(event){
   video.setAttribute("playsinline","");
   video.onloadedmetadata = function(e){video.play();};
 
+  // ========== 初始化Session数据并同步到表格 ==========
+  initBarcodeSessionData();
+  
   // 初始化摄像头
   initCamera();
 });
 
-// ========== 新增：初始化摄像头函数 ==========
+// ========== 初始化条码Session数据 ==========
+function initBarcodeSessionData() {
+  // 从localStorage获取已存储的数据
+  let sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  
+  // 获取表格中所有条码行
+  const barcodeRows = document.querySelectorAll('#targetBarcodeTable tbody tr');
+  
+  // 遍历每一行初始化Session数据
+  barcodeRows.forEach(row => {
+    const code = row.dataset.code;
+    const serial = row.querySelector('td:first-child').textContent.trim();
+    
+    // 如果Session中没有该条码数据，初始化数量为0
+    if (!sessionData[code]) {
+      sessionData[code] = {
+        serial: serial,
+        quantity: 0
+      };
+    }
+    
+    // 更新表格中的数量显示
+    row.querySelector('td:nth-child(3)').textContent = sessionData[code].quantity;
+  });
+  
+  // 保存更新后的数据到localStorage
+  localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+  
+  // 创建重置数量按钮
+  createResetQuantityButton();
+}
+
+// ========== 更新Session中的条码数量 ==========
+function updateBarcodeQuantity(code, increment = 1) {
+  let sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  
+  // 检查条码是否存在
+  if (sessionData[code]) {
+    // 增加数量
+    sessionData[code].quantity += increment;
+    // 保存到Session
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    // 更新页面表格显示
+    const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
+    if (targetRow) {
+      targetRow.querySelector('td:nth-child(3)').textContent = sessionData[code].quantity;
+      targetRow.querySelector('td:nth-child(3)').style.color = '#28a745';
+    }
+    
+    return sessionData[code].quantity;
+  }
+  
+  return 0;
+}
+
+// ========== 重置所有条码数量为0 ==========
+function resetAllQuantities() {
+  if (confirm('确定要重置所有条码数量为0吗？')) {
+    // 获取表格中所有条码行
+    const barcodeRows = document.querySelectorAll('#targetBarcodeTable tbody tr');
+    let sessionData = {};
+    
+    // 重置每一行的数量
+    barcodeRows.forEach(row => {
+      const code = row.dataset.code;
+      const serial = row.querySelector('td:first-child').textContent.trim();
+      
+      // 初始化数量为0
+      sessionData[code] = {
+        serial: serial,
+        quantity: 0
+      };
+      
+      // 更新表格显示
+      const qtyCell = row.querySelector('td:nth-child(3)');
+      qtyCell.textContent = 0;
+      qtyCell.style.color = '';
+      
+      // 移除高亮样式
+      row.classList.remove('highlight', 'flash');
+    });
+    
+    // 清空已扫描记录
+    scannedCodes.clear();
+    // 保存到Session
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    
+    // 显示提示
+    showCamToast('所有数量已重置为0');
+  }
+}
+
+// ========== 创建重置数量按钮 ==========
+function createResetQuantityButton() {
+  // 找到复制按钮容器
+  const btnContainer = document.querySelector('#copyTableBtn').parentNode;
+  
+  // 创建重置按钮
+  const resetBtn = document.createElement('button');
+  resetBtn.id = 'resetQtyBtn';
+  resetBtn.className = 'btn';
+  resetBtn.textContent = '重置数量';
+  resetBtn.addEventListener('click', resetAllQuantities);
+  
+  btnContainer.appendChild(resetBtn);
+}
+
+// ========== 初始化摄像头函数 ==========
 function initCamera() {
   // 请求摄像头权限
   navigator.mediaDevices.getUserMedia(
@@ -239,7 +360,7 @@ function initCamera() {
   });
 }
 
-// ========== 新增：刷新摄像头函数 ==========
+// ========== 刷新摄像头函数 ==========
 function refreshCamera() {
   const refreshBtn = document.getElementById('refreshCamBtn');
   refreshBtn.classList.add('loading');
@@ -271,7 +392,7 @@ function refreshCamera() {
   setTimeout(initCamera, 500);
 }
 
-// ========== 新增：显示摄像头提示函数 ==========
+// ========== 显示摄像头提示函数 ==========
 function showCamToast(message, isError = false) {
   // 创建提示框（如果不存在）
   let toast = document.querySelector('.cam-toast');
@@ -347,10 +468,12 @@ function Scan(first){
 Quagga.onDetected(function (result) {
   const currentCode = result.codeResult.code;
   
-  // ========== 关键修改：检查是否已识别过该条码 ==========
-  if (scannedCodes.has(currentCode)) {
+  // ========== 关键修改：检查是否为目标条码 ==========
+  const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  if (!sessionData[currentCode]) {
+    // 不是目标条码，播放提示音但不处理
     playBeepSound();
-    return; // 如果已识别过，直接返回，不处理
+    return;
   }
 
   if(DetectedCode==currentCode){
@@ -360,13 +483,16 @@ Quagga.onDetected(function (result) {
     DetectedCode=currentCode;
   }
   if(DetectedCount>=3){
+    // 更新Session中的数量
+    const newQuantity = updateBarcodeQuantity(currentCode);
+    
     // 查找匹配行并获取序号
     const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${currentCode}"]`);
     let displayText = currentCode;
     if (targetRow) {
       // 获取序号列的文本内容
       const serialNumber = targetRow.querySelector('td:first-child').textContent;
-      displayText = `${currentCode} 序號: ${serialNumber}`;
+      displayText = `${currentCode} 序號: ${serialNumber} 數量: ${newQuantity}`;
     }
     // 写入文本域
     jan.value+=displayText+'\n';
@@ -376,10 +502,7 @@ Quagga.onDetected(function (result) {
     highlightAndFlashBarcode(currentCode);
     // 播放提示音+粤语播报
     playBeepSound();
-    speakCantonese(currentCode);
-
-    // ========== 关键修改：将识别过的条码加入集合 ==========
-    scannedCodes.add(currentCode);
+    speakCantonese(`${currentCode}，數量${newQuantity}`);
 
     DetectedCode='';
     DetectedCount=0;
@@ -462,15 +585,15 @@ function createCopyTableButton() {
 // ========== 新增：复制表格内容函数 ==========
 function copyTableContent() {
   const table = document.getElementById('targetBarcodeTable');
-  let tableText = '序号\t条码\t存在\n'; // 制表符分隔，方便粘贴到Excel
+  let tableText = '序号\t条码\t数量\n'; // 制表符分隔，方便粘贴到Excel
   
   // 遍历表格行
   const rows = table.querySelectorAll('tbody tr');
   rows.forEach(row => {
     const serial = row.querySelector('td:first-child').textContent.trim();
     const code = row.querySelector('td:nth-child(2)').textContent.trim();
-    const exists = row.querySelector('td:nth-child(3)').textContent.trim();
-    tableText += `${serial}\t${code}\t${exists}\n`;
+    const quantity = row.querySelector('td:nth-child(3)').textContent.trim();
+    tableText += `${serial}\t${code}\t${quantity}\n`;
   });
   
   // 复制到剪贴板
@@ -494,14 +617,9 @@ function highlightAndFlashBarcode(code) {
   // 查找HTML表格中对应data-code的行
   const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
   if (targetRow) {
-    // 1. 修改"存在"列的值为Y
-    const existsCell = targetRow.querySelector('td:nth-child(3)');
-    existsCell.textContent = 'Y';
-    existsCell.style.color = '#28a745'; // 设置为绿色
-    
-    // 2. 添加闪烁类（红色背景）
+    // 添加闪烁类（红色背景）
     targetRow.classList.add('flash');
-    // 3. 0.3秒后移除闪烁类，添加永久高亮类（黄色背景）
+    // 0.3秒后移除闪烁类，添加永久高亮类（黄色背景）
     setTimeout(() => {
       targetRow.classList.remove('flash');
       targetRow.classList.add('highlight');
@@ -601,167 +719,161 @@ window.addEventListener('beforeunload', function() {
       <tr>
         <th>序号</th>
         <th>条码</th>
-        <th>存在</th>
+        <th>数量</th> <!-- 改为数量列 -->
       </tr>
     </thead>
     <tbody>
-      <tr data-code="P005849"><td>3</td><td>P005849</td><td>N</td></tr>
-      <tr data-code="0019885"><td>4</td><td>0019885</td><td>N</td></tr>
-      <tr data-code="0020554"><td>5</td><td>0020554</td><td>N</td></tr>
-      <tr data-code="0020560"><td>6</td><td>0020560</td><td>N</td></tr>
-      <tr data-code="0025095"><td>7</td><td>0025095</td><td>N</td></tr>
-      <tr data-code="0021609"><td>8</td><td>0021609</td><td>N</td></tr>
-      <tr data-code="0025091"><td>9</td><td>0025091</td><td>N</td></tr>
-      <tr data-code="0025111"><td>10</td><td>0025111</td><td>N</td></tr>
-      <tr data-code="0030830"><td>11</td><td>0030830</td><td>N</td></tr>
-      <tr data-code="0033390"><td>12</td><td>0033390</td><td>N</td></tr>
-      <tr data-code="0033393"><td>13</td><td>0033393</td><td>N</td></tr>
-      <tr data-code="0036973"><td>14</td><td>0036973</td><td>N</td></tr>
-      <tr data-code="0036974"><td>15</td><td>0036974</td><td>N</td></tr>
-      <tr data-code="0025115"><td>16</td><td>0025115</td><td>N</td></tr>
-      <tr data-code="0025122"><td>17</td><td>0025122</td><td>N</td></tr>
-      <tr data-code="0030827"><td>21</td><td>0030827</td><td>N</td></tr>
-      <tr data-code="0033384"><td>22</td><td>0033384</td><td>N</td></tr>
-      <tr data-code="0025116"><td>23</td><td>0025116</td><td>N</td></tr>
-      <tr data-code="0025126"><td>24</td><td>0025126</td><td>N</td></tr>
-      <tr data-code="0025127"><td>25</td><td>0025127</td><td>N</td></tr>
-      <tr data-code="0020417"><td>26</td><td>0020417</td><td>N</td></tr>
-      <tr data-code="0020418"><td>27</td><td>0020418</td><td>N</td></tr>
-      <tr data-code="0020419"><td>28</td><td>0020419</td><td>N</td></tr>
-      <tr data-code="0020420"><td>29</td><td>0020420</td><td>N</td></tr>
-      <tr data-code="0020421"><td>30</td><td>0020421</td><td>N</td></tr>
-      <tr data-code="0020422"><td>31</td><td>0020422</td><td>N</td></tr>
-      <tr data-code="0020423"><td>32</td><td>0020423</td><td>N</td></tr>
-      <tr data-code="0020424"><td>33</td><td>0020424</td><td>N</td></tr>
-      <tr data-code="0020425"><td>34</td><td>0020425</td><td>N</td></tr>
-      <tr data-code="0020426"><td>35</td><td>0020426</td><td>N</td></tr>
-      <tr data-code="0020427"><td>36</td><td>0020427</td><td>N</td></tr>
-      <tr data-code="0020428"><td>37</td><td>0020428</td><td>N</td></tr>
-      <tr data-code="0020430"><td>38</td><td>0020430</td><td>N</td></tr>
-      <tr data-code="0020431"><td>39</td><td>0020431</td><td>N</td></tr>
-      <tr data-code="0020432"><td>40</td><td>0020432</td><td>N</td></tr>
-      <tr data-code="0020433"><td>41</td><td>0020433</td><td>N</td></tr>
-      <tr data-code="0020434"><td>42</td><td>0020434</td><td>N</td></tr>
-      <tr data-code="0020435"><td>43</td><td>0020435</td><td>N</td></tr>
-      <tr data-code="0020437"><td>44</td><td>0020437</td><td>N</td></tr>
-      <tr data-code="0020438"><td>45</td><td>0020438</td><td>N</td></tr>
-      <tr data-code="0022517"><td>46</td><td>0022517</td><td>N</td></tr>
-      <tr data-code="0022518"><td>47</td><td>0022518</td><td>N</td></tr>
-      <tr data-code="0022519"><td>48</td><td>0022519</td><td>N</td></tr>
-      <tr data-code="0022520"><td>49</td><td>0022520</td><td>N</td></tr>
-      <tr data-code="0022521"><td>50</td><td>0022521</td><td>N</td></tr>
-      <tr data-code="0022522"><td>51</td><td>0022522</td><td>N</td></tr>
-      <tr data-code="0022523"><td>52</td><td>0022523</td><td>N</td></tr>
-      <tr data-code="0044713"><td>54</td><td>0044713</td><td>N</td></tr>
-      <tr data-code="0044714"><td>55</td><td>0044714</td><td>N</td></tr>
-      <tr data-code="0033632"><td>56</td><td>0033632</td><td>N</td></tr>
-      <tr data-code="0033630"><td>57</td><td>0033630</td><td>N</td></tr>
-      <tr data-code="0034128"><td>58</td><td>0034128</td><td>N</td></tr>
-      <tr data-code="0026156"><td>59</td><td>0026156</td><td>N</td></tr>
-      <tr data-code="0033627"><td>60</td><td>0033627</td><td>N</td></tr>
-      <tr data-code="0033624"><td>61</td><td>0033624</td><td>N</td></tr>
-      <tr data-code="0033623"><td>62</td><td>0033623</td><td>N</td></tr>
-      <tr data-code="0033640"><td>63</td><td>0033640</td><td>N</td></tr>
-      <tr data-code="0033638"><td>64</td><td>0033638</td><td>N</td></tr>
-      <tr data-code="0033637"><td>65</td><td>0033637</td><td>N</td></tr>
-      <tr data-code="0036503"><td>66</td><td>0036503</td><td>N</td></tr>
-      <tr data-code="0036504"><td>67</td><td>0036504</td><td>N</td></tr>
-      <tr data-code="0036505"><td>68</td><td>0036505</td><td>N</td></tr>
-      <tr data-code="0036506"><td>69</td><td>0036506</td><td>N</td></tr>
-      <tr data-code="0036287"><td>70</td><td>0036287</td><td>N</td></tr>
-      <tr data-code="0036288"><td>71</td><td>0036288</td><td>N</td></tr>
-      <tr data-code="0036286"><td>72</td><td>0036286</td><td>N</td></tr>
-      <tr data-code="0036289"><td>73</td><td>0036289</td><td>N</td></tr>
-      <tr data-code="0036875"><td>74</td><td>0036875</td><td>N</td></tr>
-      <tr data-code="0036876"><td>75</td><td>0036876</td><td>N</td></tr>
-      <tr data-code="0036074"><td>76</td><td>0036074</td><td>N</td></tr>
-      <tr data-code="0036051"><td>77</td><td>0036051</td><td>N</td></tr>
-      <tr data-code="0026361"><td>78</td><td>0026361</td><td>N</td></tr>
-      <tr data-code="0026362"><td>79</td><td>0026362</td><td>N</td></tr>
-      <tr data-code="0031385"><td>80</td><td>0031385</td><td>N</td></tr>
-      <tr data-code="0031846"><td>81</td><td>0031846</td><td>N</td></tr>
-      <tr data-code="0031845"><td>82</td><td>0031845</td><td>N</td></tr>
-      <tr data-code="0036748"><td>83</td><td>0036748</td><td>N</td></tr>
-      <tr data-code="0032217"><td>84</td><td>0032217</td><td>N</td></tr>
-      <tr data-code="0032469"><td>85</td><td>0032469</td><td>N</td></tr>
-      <tr data-code="0036068"><td>86</td><td>0036068</td><td>N</td></tr>
-      <tr data-code="0019141"><td>87</td><td>0019141</td><td>N</td></tr>
-      <tr data-code="0019145"><td>88</td><td>0019145</td><td>N</td></tr>
-      <tr data-code="0019147"><td>89</td><td>0019147</td><td>N</td></tr>
-      <tr data-code="0019148"><td>90</td><td>0019148</td><td>N</td></tr>
-      <tr data-code="0021619"><td>91</td><td>0021619</td><td>N</td></tr>
-      <tr data-code="0021620"><td>92</td><td>0021620</td><td>N</td></tr>
-      <tr data-code="0017643"><td>93</td><td>0017643</td><td>N</td></tr>
-      <tr data-code="0019944"><td>94</td><td>0019944</td><td>N</td></tr>
-      <tr data-code="0031167"><td>95</td><td>0031167</td><td>N</td></tr>
-      <tr data-code="0031168"><td>96</td><td>0031168</td><td>N</td></tr>
-      <tr data-code="0031175"><td>97</td><td>0031175</td><td>N</td></tr>
-      <tr data-code="0031155"><td>98</td><td>0031155</td><td>N</td></tr>
-      <tr data-code="0031149"><td>99</td><td>0031149</td><td>N</td></tr>
-      <tr data-code="0031170"><td>100</td><td>0031170</td><td>N</td></tr>
-      <tr data-code="0027946"><td>102</td><td>0027946</td><td>N</td></tr>
-      <tr data-code="0027948"><td>103</td><td>0027948</td><td>N</td></tr>
-      <tr data-code="0031221"><td>104</td><td>0031221</td><td>N</td></tr>
-      <tr data-code="0033396"><td>105</td><td>0033396</td><td>N</td></tr>
-      <tr data-code="0033397"><td>106</td><td>0033397</td><td>N</td></tr>
-      <tr data-code="0033398"><td>107</td><td>0033398</td><td>N</td></tr>
-      <tr data-code="0031851"><td>108</td><td>0031851</td><td>N</td></tr>
-      <tr data-code="0031852"><td>109</td><td>0031852</td><td>N</td></tr>
-      <tr data-code="0018142"><td>110</td><td>0018142</td><td>N</td></tr>
-      <tr data-code="0024848"><td>111</td><td>0024848</td><td>N</td></tr>
-      <tr data-code="0024849"><td>112</td><td>0024849</td><td>N</td></tr>
-      <tr data-code="0024854"><td>113</td><td>0024854</td><td>N</td></tr>
-      <tr data-code="0024855"><td>114</td><td>0024855</td><td>N</td></tr>
-      <tr data-code="0024856"><td>115</td><td>0024856</td><td>N</td></tr>
-      <tr data-code="0022287"><td>116</td><td>0022287</td><td>N</td></tr>
-      <tr data-code="0036279"><td>118</td><td>0036279</td><td>N</td></tr>
-      <tr data-code="0036280"><td>119</td><td>0036280</td><td>N</td></tr>
-      <tr data-code="P005403"><td>120</td><td>P005403</td><td>N</td></tr>
-      <tr data-code="P005440"><td>121</td><td>P005440</td><td>N</td></tr>
-      <tr data-code="P005448"><td>122</td><td>P005448</td><td>N</td></tr>
-      <tr data-code="P005438"><td>123</td><td>P005438</td><td>N</td></tr>
-      <tr data-code="P005481"><td>124</td><td>P005481</td><td>N</td></tr>
-      <tr data-code="P005496"><td>125</td><td>P005496</td><td>N</td></tr>
-      <tr data-code="P005502"><td>126</td><td>P005502</td><td>N</td></tr>
-      <tr data-code="0026679"><td>127</td><td>0026679</td><td>N</td></tr>
-      <tr data-code="0031703"><td>128</td><td>0031703</td><td>N</td></tr>
-      <tr data-code="0031758"><td>129</td><td>0031758</td><td>N</td></tr>
-      <tr data-code="0031727"><td>130</td><td>0031727</td><td>N</td></tr>
-      <tr data-code="0031698"><td>131</td><td>0031698</td><td>N</td></tr>
-      <tr data-code="0017591"><td>132</td><td>0017591</td><td>N</td></tr>
-      <tr data-code="0020782"><td>133</td><td>0020782</td><td>N</td></tr>
-      <tr data-code="0022318"><td>134</td><td>0022318</td><td>N</td></tr>
-      <tr data-code="0036282"><td>135</td><td>0036282</td><td>N</td></tr>
-      <tr data-code="0036283"><td>136</td><td>0036283</td><td>N</td></tr>
-      <tr data-code="0036284"><td>137</td><td>0036284</td><td>N</td></tr>
-      <tr data-code="0019954"><td>138</td><td>0019954</td><td>N</td></tr>
-      <tr data-code="0020750"><td>139</td><td>0020750</td><td>N</td></tr>
-      <tr data-code="0023739"><td>140</td><td>0023739</td><td>N</td></tr>
-      <tr data-code="0023740"><td>141</td><td>0023740</td><td>N</td></tr>
-      <tr data-code="0018144"><td>142</td><td>0018144</td><td>N</td></tr>
-      <tr data-code="0019953"><td>143</td><td>0019953</td><td>N</td></tr>
-      <tr data-code="0022234"><td>144</td><td>0022234</td><td>N</td></tr>
-      <tr data-code="0022235"><td>145</td><td>0022235</td><td>N</td></tr>
-      <tr data-code="0026356"><td>146</td><td>0026356</td><td>N</td></tr>
-      <tr data-code="L002365"><td>147</td><td>L002365</td><td>N</td></tr>
-      <tr data-code="0032130"><td>148</td><td>0032130</td><td>N</td></tr>
-      <tr data-code="0033512"><td>149</td><td>0033512</td><td>N</td></tr>
-      <tr data-code="0036310"><td>150</td><td>0036310</td><td>N</td></tr>
-      <tr data-code="0033633"><td>151</td><td>0033633</td><td>N</td></tr>
-      <tr data-code="0022275"><td>152</td><td>0022275</td><td>N</td></tr>
-      <tr data-code="0022276"><td>153</td><td>0022276</td><td>N</td></tr>
-      <tr data-code="0015684"><td>154</td><td>0015684</td><td>N</td></tr>
-      <tr data-code="0022324"><td>155</td><td>0022324</td><td>N</td></tr>
-      <tr data-code="0022333"><td>156</td><td>0022333</td><td>N</td></tr>
-      <tr data-code="0032135"><td>157</td><td>0032135</td><td>N</td></tr>
-      <tr data-code="0032136"><td>158</td><td>0032136</td><td>N</td></tr>
+      <tr data-code="P005849"><td>3</td><td>P005849</td><td>0</td></tr>
+      <tr data-code="0019885"><td>4</td><td>0019885</td><td>0</td></tr>
+      <tr data-code="0020554"><td>5</td><td>0020554</td><td>0</td></tr>
+      <tr data-code="0020560"><td>6</td><td>0020560</td><td>0</td></tr>
+      <tr data-code="0025095"><td>7</td><td>0025095</td><td>0</td></tr>
+      <tr data-code="0021609"><td>8</td><td>0021609</td><td>0</td></tr>
+      <tr data-code="0025091"><td>9</td><td>0025091</td><td>0</td></tr>
+      <tr data-code="0025111"><td>10</td><td>0025111</td><td>0</td></tr>
+      <tr data-code="0030830"><td>11</td><td>0030830</td><td>0</td></tr>
+      <tr data-code="0033390"><td>12</td><td>0033390</td><td>0</td></tr>
+      <tr data-code="0033393"><td>13</td><td>0033393</td><td>0</td></tr>
+      <tr data-code="0036973"><td>14</td><td>0036973</td><td>0</td></tr>
+      <tr data-code="0036974"><td>15</td><td>0036974</td><td>0</td></tr>
+      <tr data-code="0025115"><td>16</td><td>0025115</td><td>0</td></tr>
+      <tr data-code="0025122"><td>17</td><td>0025122</td><td>0</td></tr>
+      <tr data-code="0030827"><td>21</td><td>0030827</td><td>0</td></tr>
+      <tr data-code="0033384"><td>22</td><td>0033384</td><td>0</td></tr>
+      <tr data-code="0025116"><td>23</td><td>0025116</td><td>0</td></tr>
+      <tr data-code="0025126"><td>24</td><td>0025126</td><td>0</td></tr>
+      <tr data-code="0025127"><td>25</td><td>0025127</td><td>0</td></tr>
+      <tr data-code="0020417"><td>26</td><td>0020417</td><td>0</td></tr>
+      <tr data-code="0020418"><td>27</td><td>0020418</td><td>0</td></tr>
+      <tr data-code="0020419"><td>28</td><td>0020419</td><td>0</td></tr>
+      <tr data-code="0020420"><td>29</td><td>0020420</td><td>0</td></tr>
+      <tr data-code="0020421"><td>30</td><td>0020421</td><td>0</td></tr>
+      <tr data-code="0020422"><td>31</td><td>0020422</td><td>0</td></tr>
+      <tr data-code="0020423"><td>32</td><td>0020423</td><td>0</td></tr>
+      <tr data-code="0020424"><td>33</td><td>0020424</td><td>0</td></tr>
+      <tr data-code="0020425"><td>34</td><td>0020425</td><td>0</td></tr>
+      <tr data-code="0020426"><td>35</td><td>0020426</td><td>0</td></tr>
+      <tr data-code="0020427"><td>36</td><td>0020427</td><td>0</td></tr>
+      <tr data-code="0020428"><td>37</td><td>0020428</td><td>0</td></tr>
+      <tr data-code="0020430"><td>38</td><td>0020430</td><td>0</td></tr>
+      <tr data-code="0020431"><td>39</td><td>0020431</td><td>0</td></tr>
+      <tr data-code="0020432"><td>40</td><td>0020432</td><td>0</td></tr>
+      <tr data-code="0020433"><td>41</td><td>0020433</td><td>0</td></tr>
+      <tr data-code="0020434"><td>42</td><td>0020434</td><td>0</td></tr>
+      <tr data-code="0020435"><td>43</td><td>0020435</td><td>0</td></tr>
+      <tr data-code="0020437"><td>44</td><td>0020437</td><td>0</td></tr>
+      <tr data-code="0020438"><td>45</td><td>0020438</td><td>0</td></tr>
+      <tr data-code="0022517"><td>46</td><td>0022517</td><td>0</td></tr>
+      <tr data-code="0022518"><td>47</td><td>0022518</td><td>0</td></tr>
+      <tr data-code="0022519"><td>48</td><td>0022519</td><td>0</td></tr>
+      <tr data-code="0022520"><td>49</td><td>0022520</td><td>0</td></tr>
+      <tr data-code="0022521"><td>50</td><td>0022521</td><td>0</td></tr>
+      <tr data-code="0022522"><td>51</td><td>0022522</td><td>0</td></tr>
+      <tr data-code="0022523"><td>52</td><td>0022523</td><td>0</td></tr>
+      <tr data-code="0044713"><td>54</td><td>0044713</td><td>0</td></tr>
+      <tr data-code="0044714"><td>55</td><td>0044714</td><td>0</td></tr>
+      <tr data-code="0033632"><td>56</td><td>0033632</td><td>0</td></tr>
+      <tr data-code="0033630"><td>57</td><td>0033630</td><td>0</td></tr>
+      <tr data-code="0034128"><td>58</td><td>0034128</td><td>0</td></tr>
+      <tr data-code="0026156"><td>59</td><td>0026156</td><td>0</td></tr>
+      <tr data-code="0033627"><td>60</td><td>0033627</td><td>0</td></tr>
+      <tr data-code="0033624"><td>61</td><td>0033624</td><td>0</td></tr>
+      <tr data-code="0033623"><td>62</td><td>0033623</td><td>0</td></tr>
+      <tr data-code="0033640"><td>63</td><td>0033640</td><td>0</td></tr>
+      <tr data-code="0033638"><td>64</td><td>0033638</td><td>0</td></tr>
+      <tr data-code="0033637"><td>65</td><td>0033637</td><td>0</td></tr>
+      <tr data-code="0036503"><td>66</td><td>0036503</td><td>0</td></tr>
+      <tr data-code="0036504"><td>67</td><td>0036504</td><td>0</td></tr>
+      <tr data-code="0036505"><td>68</td><td>0036505</td><td>0</td></tr>
+      <tr data-code="0036506"><td>69</td><td>0036506</td><td>0</td></tr>
+      <tr data-code="0036287"><td>70</td><td>0036287</td><td>0</td></tr>
+      <tr data-code="0036288"><td>71</td><td>0036288</td><td>0</td></tr>
+      <tr data-code="0036286"><td>72</td><td>0036286</td><td>0</td></tr>
+      <tr data-code="0036289"><td>73</td><td>0036289</td><td>0</td></tr>
+      <tr data-code="0036875"><td>74</td><td>0036875</td><td>0</td></tr>
+      <tr data-code="0036876"><td>75</td><td>0036876</td><td>0</td></tr>
+      <tr data-code="0036074"><td>76</td><td>0036074</td><td>0</td></tr>
+      <tr data-code="0036051"><td>77</td><td>0036051</td><td>0</td></tr>
+      <tr data-code="0026361"><td>78</td><td>0026361</td><td>0</td></tr>
+      <tr data-code="0026362"><td>79</td><td>0026362</td><td>0</td></tr>
+      <tr data-code="0031385"><td>80</td><td>0031385</td><td>0</td></tr>
+      <tr data-code="0031846"><td>81</td><td>0031846</td><td>0</td></tr>
+      <tr data-code="0031845"><td>82</td><td>0031845</td><td>0</td></tr>
+      <tr data-code="0036748"><td>83</td><td>0036748</td><td>0</td></tr>
+      <tr data-code="0032217"><td>84</td><td>0032217</td><td>0</td></tr>
+      <tr data-code="0032469"><td>85</td><td>0032469</td><td>0</td></tr>
+      <tr data-code="0036068"><td>86</td><td>0036068</td><td>0</td></tr>
+      <tr data-code="0019141"><td>87</td><td>0019141</td><td>0</td></tr>
+      <tr data-code="0019145"><td>88</td><td>0019145</td><td>0</td></tr>
+      <tr data-code="0019147"><td>89</td><td>0019147</td><td>0</td></tr>
+      <tr data-code="0019148"><td>90</td><td>0019148</td><td>0</td></tr>
+      <tr data-code="0021619"><td>91</td><td>0021619</td><td>0</td></tr>
+      <tr data-code="0021620"><td>92</td><td>0021620</td><td>0</td></tr>
+      <tr data-code="0017643"><td>93</td><td>0017643</td><td>0</td></tr>
+      <tr data-code="0019944"><td>94</td><td>0019944</td><td>0</td></tr>
+      <tr data-code="0031167"><td>95</td><td>0031167</td><td>0</td></tr>
+      <tr data-code="0031168"><td>96</td><td>0031168</td><td>0</td></tr>
+      <tr data-code="0031175"><td>97</td><td>0031175</td><td>0</td></tr>
+      <tr data-code="0031155"><td>98</td><td>0031155</td><td>0</td></tr>
+      <tr data-code="0031149"><td>99</td><td>0031149</td><td>0</td></tr>
+      <tr data-code="0031170"><td>100</td><td>0031170</td><td>0</td></tr>
+      <tr data-code="0027946"><td>102</td><td>0027946</td><td>0</td></tr>
+      <tr data-code="0027948"><td>103</td><td>0027948</td><td>0</td></tr>
+      <tr data-code="0031221"><td>104</td><td>0031221</td><td>0</td></tr>
+      <tr data-code="0033396"><td>105</td><td>0033396</td><td>0</td></tr>
+      <tr data-code="0033397"><td>106</td><td>0033397</td><td>0</td></tr>
+      <tr data-code="0033398"><td>107</td><td>0033398</td><td>0</td></tr>
+      <tr data-code="0031851"><td>108</td><td>0031851</td><td>0</td></tr>
+      <tr data-code="0031852"><td>109</td><td>0031852</td><td>0</td></tr>
+      <tr data-code="0018142"><td>110</td><td>0018142</td><td>0</td></tr>
+      <tr data-code="0024848"><td>111</td><td>0024848</td><td>0</td></tr>
+      <tr data-code="0024849"><td>112</td><td>0024849</td><td>0</td></tr>
+      <tr data-code="0024854"><td>113</td><td>0024854</td><td>0</td></tr>
+      <tr data-code="0024855"><td>114</td><td>0024855</td><td>0</td></tr>
+      <tr data-code="0024856"><td>115</td><td>0024856</td><td>0</td></tr>
+      <tr data-code="0022287"><td>116</td><td>0022287</td><td>0</td></tr>
+      <tr data-code="0036279"><td>118</td><td>0036279</td><td>0</td></tr>
+      <tr data-code="0036280"><td>119</td><td>0036280</td><td>0</td></tr>
+      <tr data-code="P005403"><td>120</td><td>P005403</td><td>0</td></tr>
+      <tr data-code="P005440"><td>121</td><td>P005440</td><td>0</td></tr>
+      <tr data-code="P005448"><td>122</td><td>P005448</td><td>0</td></tr>
+      <tr data-code="P005438"><td>123</td><td>P005438</td><td>0</td></tr>
+      <tr data-code="P005481"><td>124</td><td>P005481</td><td>0</td></tr>
+      <tr data-code="P005496"><td>125</td><td>P005496</td><td>0</td></tr>
+      <tr data-code="P005502"><td>126</td><td>P005502</td><td>0</td></tr>
+      <tr data-code="0026679"><td>127</td><td>0026679</td><td>0</td></tr>
+      <tr data-code="0031703"><td>128</td><td>0031703</td><td>0</td></tr>
+      <tr data-code="0031758"><td>129</td><td>0031758</td><td>0</td></tr>
+      <tr data-code="0031727"><td>130</td><td>0031727</td><td>0</td></tr>
+      <tr data-code="0031698"><td>131</td><td>0031698</td><td>0</td></tr>
+      <tr data-code="0017591"><td>132</td><td>0017591</td><td>0</td></tr>
+      <tr data-code="0020782"><td>133</td><td>0020782</td><td>0</td></tr>
+      <tr data-code="0022318"><td>134</td><td>0022318</td><td>0</td></tr>
+      <tr data-code="0036282"><td>135</td><td>0036282</td><td>0</td></tr>
+      <tr data-code="0036283"><td>136</td><td>0036283</td><td>0</td></tr>
+      <tr data-code="0036284"><td>137</td><td>0036284</td><td>0</td></tr>
+      <tr data-code="0019954"><td>138</td><td>0019954</td><td>0</td></tr>
+      <tr data-code="0020750"><td>139</td><td>0020750</td><td>0</td></tr>
+      <tr data-code="0023739"><td>140</td><td>0023739</td><td>0</td></tr>
+      <tr data-code="0023740"><td>141</td><td>0023740</td><td>0</td></tr>
+      <tr data-code="0018144"><td>142</td><td>0018144</td><td>0</td></tr>
+      <tr data-code="0019953"><td>143</td><td>0019953</td><td>0</td></tr>
+      <tr data-code="0022234"><td>144</td><td>0022234</td><td>0</td></tr>
+      <tr data-code="0022235"><td>145</td><td>0022235</td><td>0</td></tr>
+      <tr data-code="0026356"><td>146</td><td>0026356</td><td>0</td></tr>
+      <tr data-code="L002365"><td>147</td><td>L002365</td><td>0</td></tr>
+      <tr data-code="0032130"><td>148</td><td>0032130</td><td>0</td></tr>
+      <tr data-code="0033512"><td>149</td><td>0033512</td><td>0</td></tr>
+      <tr data-code="0036310"><td>150</td><td>0036310</td><td>0</td></tr>
+      <tr data-code="0033633"><td>151</td><td>0033633</td><td>0</td></tr>
+      <tr data-code="0022275"><td>152</td><td>0022275</td><td>0</td></tr>
+      <tr data-code="0022276"><td>153</td><td>0022276</td><td>0</td></tr>
+      <tr data-code="0015684"><td>154</td><td>0015684</td><td>0</td></tr>
+      <tr data-code="0022324"><td>155</td><td>0022324</td><td>0</td></tr>
+      <tr data-code="0022333"><td>156</td><td>0022333</td><td>0</td></tr>
+      <tr data-code="0032135"><td>157</td><td>0032135</td><td>0</td></tr>
+      <tr data-code="0032136"><td>158</td><td>0032136</td><td>0</td></tr>
     </tbody>
   </table>
 </body>
 </html>
-
-
-
-
-
-
