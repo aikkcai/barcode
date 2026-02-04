@@ -878,13 +878,13 @@ function flashBackground() {
   // 保存原始背景色
   const originalBg = document.body.style.backgroundColor;
   
-  // 设置黄色背景
-  document.body.style.backgroundColor = '#fff3cd';
+  // 设置紅色背景
+  document.body.style.backgroundColor = '#e06975';
   
   // 0.3秒后恢复原始背景色
   setTimeout(() => {
     document.body.style.backgroundColor = originalBg || '';
-  }, 10);
+  }, 1);
 }
   
 // 音频相关函数
@@ -1123,3 +1123,4 @@ window.addEventListener('beforeunload', function() {
   </table>
 </body>
 </html>
+
