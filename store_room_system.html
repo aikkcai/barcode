@@ -1381,22 +1381,17 @@ function Scan(first){
   });
   scanTimer = setTimeout(Scan,50,false);
 }
-  
-// 新增全局变量
-let isPaused = false;
-const PAUSE_DURATION = 1000; // 识别成功后暂停1秒
 
-// 修改Quagga.onDetected回调
 Quagga.onDetected(function (result) {
   const currentCode = result.codeResult.code;
   
-  // 如果处于暂停状态，直接返回
-  if (isPaused) return;
-  
-  // ========== 原有逻辑保留 ==========
+  // ========== 获取当前操作配置 ==========
   const operationConfig = getCurrentOperationConfig();
+  
+  // ========== 检查是否为目标条码 ==========
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
   if (!sessionData[currentCode]) {
+    // 不是目标条码，播放提示音并提示
     playBeepSound();
     jan.value += `未找到條碼：${currentCode}\n`;
     jan.scrollTop = jan.scrollHeight;
@@ -1411,58 +1406,58 @@ Quagga.onDetected(function (result) {
   }
   
   if(DetectedCount>=3){
-    // ========== 新增：识别成功后暂停解码 ==========
-    isPaused = true;
-    clearTimeout(scanTimer); // 清除当前定时器
-    
-    // ========== 原有操作逻辑保留 ==========
+    // ========== 核心修改：查询模式豁免重复条码限制 ==========
     if (currentCode === lastProcessedCode && operationConfig.type !== 'query') {
+      // 相同条码且不是查询模式：仅播放提示音和闪烁，不执行其他操作
       playBeepSound();
       highlightAndFlashBarcode(currentCode);
-      return;
+      return; // 直接返回，不执行后续的数量操作和文本记录
     }
     
     let displayText = currentCode;
     let newQuantity = sessionData[currentCode].quantity;
     
+    // ========== 根据操作类型处理 ==========
     switch(operationConfig.type) {
-      case 'inbound':
+      case 'inbound': // 入仓
         newQuantity = updateBarcodeQuantity(currentCode, operationConfig.qty);
         displayText = `${currentCode} 入倉 ${operationConfig.qty} 個，當前數量：${newQuantity}`;
+        // 高亮+闪烁行
         highlightAndFlashBarcode(currentCode);
+        // 粤语播报
         speakCantonese(`${currentCode}，入倉${operationConfig.qty}個，當前數量${newQuantity}`);
+        // 更新上一次处理的条码记录（入仓模式）
         lastProcessedCode = currentCode;
         break;
         
-      case 'outbound':
+      case 'outbound': // 出仓
         newQuantity = updateBarcodeQuantity(currentCode, -operationConfig.qty);
         displayText = `${currentCode} 出倉 ${operationConfig.qty} 個，當前數量：${newQuantity}`;
+        // 高亮+闪烁行
         highlightAndFlashBarcode(currentCode);
+        // 粤语播报
         speakCantonese(`${currentCode}，出倉${operationConfig.qty}個，當前數量${newQuantity}`);
+        // 更新上一次处理的条码记录（出仓模式）
         lastProcessedCode = currentCode;
         break;
         
-      case 'query':
+      case 'query': // 查询 - 不更新lastProcessedCode，允许重复查询
         showQueryModal(currentCode, newQuantity);
         displayText = `${currentCode} 查詢，當前數量：${newQuantity}`;
         break;
     }
     
+    // 写入文本域
     jan.value += displayText + '\n';
     jan.scrollTop = jan.scrollHeight;
     
+    // 播放提示音（查询模式已在弹窗函数中播放）
     if (operationConfig.type !== 'query') {
       playBeepSound();
     }
 
     DetectedCode = '';
     DetectedCount = 0;
-    
-    // ========== 新增：暂停后恢复解码 ==========
-    setTimeout(() => {
-      isPaused = false;
-      scanTimer = setTimeout(Scan, 200, false); // 恢复解码
-    }, PAUSE_DURATION);
   }
 });
 
