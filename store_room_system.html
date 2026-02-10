@@ -65,7 +65,7 @@ body {
   margin: 10px 0;
   display: block !important;
 }
-/* 目标条码表格样式（三列：序号+条码+数量） */
+/* 目标条码表格样式（四列：序号+条码+名称+数量） */
 #targetBarcodeTable {
   width: 100%;
   border-collapse: collapse;
@@ -90,15 +90,19 @@ body {
 }
 /* 条码列宽度 */
 #targetBarcodeTable td:nth-child(2) {
-  width: calc(100% - 240px);
+  width: calc(100% - 320px);
+}
+/* 名称列宽度固定 */
+#targetBarcodeTable td:nth-child(3) {
+  width: 120px;
 }
 /* 数量列宽度固定 */
-#targetBarcodeTable td:nth-child(3) {
+#targetBarcodeTable td:nth-child(4) {
   width: 80px;
   font-weight: bold;
 }
 /* 操作列宽度固定 */
-#targetBarcodeTable td:nth-child(4) {
+#targetBarcodeTable td:nth-child(5) {
   width: 80px;
 }
 /* 匹配高亮：黄色背景（永久） */
@@ -395,8 +399,6 @@ const BARCODE_LIST_KEY = 'customBarcodeList'; // 存储自定义条码列表
 var lastProcessedCode = '';
 // ========== 当前编辑的条码ID ==========
 var currentEditingCode = null;
-// ========== 新增：扫描暂停标记 ==========
-var isScanPaused = false;
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -471,10 +473,12 @@ function extractInitialBarcodes() {
   barcodeRows.forEach(row => {
     const code = row.dataset.code;
     const serial = row.querySelector('td:first-child').textContent.trim();
+    const name = row.querySelector('td:nth-child(3)').textContent.trim() || ''; // 新增名称
     
     barcodeList.push({
       serial: serial,
-      code: code
+      code: code,
+      name: name // 新增名称
     });
   });
   
@@ -494,10 +498,11 @@ function renderBarcodeTable(barcodeList) {
     const row = document.createElement('tr');
     row.dataset.code = item.code;
     
-    // 创建单元格
+    // 创建单元格（新增名称列）
     row.innerHTML = `
       <td>${item.serial}</td>
       <td>${item.code}</td>
+      <td>${item.name || ''}</td> <!-- 新增名称列 -->
       <td>0</td>
       <td>
         <button class="edit-btn" onclick="editBarcode('${item.code}')">编辑</button>
@@ -532,6 +537,7 @@ function resetBarcodeSessionData() {
   barcodeList.forEach(item => {
     sessionData[item.code] = {
       serial: item.serial,
+      name: item.name, // 新增名称
       quantity: 0
     };
   });
@@ -542,7 +548,7 @@ function resetBarcodeSessionData() {
   barcodeList.forEach(item => {
     const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${item.code}"]`);
     if (targetRow) {
-      targetRow.querySelector('td:nth-child(3)').textContent = 0;
+      targetRow.querySelector('td:nth-child(4)').textContent = 0; // 数量列变为第4列
       targetRow.classList.remove('highlight', 'flash');
     }
   });
@@ -630,7 +636,7 @@ function createBarcodeModal() {
   modal.id = 'barcodeModal';
   modal.className = 'barcode-modal';
   
-  // 弹窗内容
+  // 弹窗内容（新增名称输入框）
   modal.innerHTML = `
     <h3 id="modalTitle">添加条码</h3>
     <div id="singleBarcodeForm" class="modal-form-content">
@@ -642,17 +648,24 @@ function createBarcodeModal() {
         <label for="barcodeCode">条码：</label>
         <input type="text" id="barcodeCode" required placeholder="例如：P005849 或 0019885">
       </div>
+      <div class="modal-form-group"> <!-- 新增名称输入框 -->
+        <label for="barcodeName">名称：</label>
+        <input type="text" id="barcodeName" placeholder="例如：产品A、物料B">
+      </div>
     </div>
     <div id="batchBarcodeForm" class="modal-form-content" style="display:none;">
       <div class="modal-form-group">
         <label>批量输入条码（每行一个）：</label>
         <textarea id="batchBarcodeInput" placeholder="示例：
-1,P005849
-2,0019885
+1,P005849,产品A
+2,0019885,物料B
 或者每行只输入条码（序号自动生成）：
+P005849,产品A
+0019885
+或者仅条码：
 P005849
 0019885"></textarea>
-        <div class="hint-text">提示：支持两种格式 - 1. 序号,条码  2. 仅条码（序号自动生成）</div>
+        <div class="hint-text">提示：支持三种格式 - 1. 序号,条码,名称  2. 条码,名称  3. 仅条码（序号自动生成）</div>
       </div>
     </div>
     <div class="modal-btn-group">
@@ -688,6 +701,7 @@ function openBarcodeModal(isBatch = false, code = null) {
   // 重置表单
   document.getElementById('barcodeSerial').value = '';
   document.getElementById('barcodeCode').value = '';
+  document.getElementById('barcodeName').value = ''; // 新增名称重置
   document.getElementById('batchBarcodeInput').value = '';
   
   // 设置当前编辑的条码
@@ -702,6 +716,7 @@ function openBarcodeModal(isBatch = false, code = null) {
     if (item) {
       document.getElementById('barcodeSerial').value = item.serial;
       document.getElementById('barcodeCode').value = item.code;
+      document.getElementById('barcodeName').value = item.name || ''; // 新增名称赋值
     }
     isBatch = false; // 编辑模式只能单条编辑
   } else {
@@ -746,6 +761,7 @@ function saveBarcode() {
     // 编辑模式
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
+    const name = document.getElementById('barcodeName').value.trim(); // 新增名称
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
@@ -780,13 +796,14 @@ function saveBarcode() {
         updateSessionCode(currentEditingCode, code);
       }
       
-      barcodeList[index] = { serial, code };
+      barcodeList[index] = { serial, code, name }; // 新增名称
     }
     
   } else if (document.getElementById('singleBarcodeForm').style.display !== 'none') {
     // 单条添加模式
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
+    const name = document.getElementById('barcodeName').value.trim(); // 新增名称
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
@@ -808,7 +825,7 @@ function saveBarcode() {
     }
     
     // 添加新条码
-    barcodeList.push({ serial, code });
+    barcodeList.push({ serial, code, name }); // 新增名称
     
   } else {
     // 批量添加模式
@@ -826,18 +843,21 @@ function saveBarcode() {
     
     for (const line of lines) {
       const trimmedLine = line.trim();
-      let serial, code;
+      let serial, code, name = '';
       
-      // 检查是否是 序号,条码 格式
-      if (trimmedLine.includes(',')) {
-        const parts = trimmedLine.split(',').map(part => part.trim());
-        if (parts.length === 2) {
-          serial = parts[0];
-          code = parts[1];
-        } else {
-          alert(`格式错误：${line}，请检查！`);
-          return;
-        }
+      // 检查是否是 序号,条码,名称 格式 或 条码,名称 格式
+      const parts = trimmedLine.split(',').map(part => part.trim());
+      if (parts.length === 3) {
+        // 序号,条码,名称
+        serial = parts[0];
+        code = parts[1];
+        name = parts[2];
+      } else if (parts.length === 2) {
+        // 条码,名称
+        maxSerial++;
+        serial = maxSerial.toString();
+        code = parts[0];
+        name = parts[1];
       } else {
         // 仅条码格式，自动生成序号
         maxSerial++;
@@ -868,7 +888,7 @@ function saveBarcode() {
         return;
       }
       
-      newBarcodes.push({ serial, code });
+      newBarcodes.push({ serial, code, name }); // 新增名称
     }
     
     // 添加批量条码
@@ -935,17 +955,17 @@ function importBarcodeList(event) {
         const trimmedLine = line.trim();
         if (!trimmedLine) continue;
         
-        let serial, code;
+        let serial, code, name = '';
         
-        // 支持 序号,条码 格式
-        if (trimmedLine.includes(',')) {
-          const parts = trimmedLine.split(',').map(part => part.trim());
-          if (parts.length === 2) {
-            serial = parts[0];
-            code = parts[1];
-          } else {
-            throw new Error(`格式错误：${line}`);
-          }
+        // 支持 序号,条码,名称 格式 或 序号,条码 格式
+        const parts = trimmedLine.split(',').map(part => part.trim());
+        if (parts.length === 3) {
+          serial = parts[0];
+          code = parts[1];
+          name = parts[2];
+        } else if (parts.length === 2) {
+          serial = parts[0];
+          code = parts[1];
         } else {
           // 仅条码格式，自动生成序号
           serial = (newBarcodes.length + 1).toString();
@@ -961,7 +981,7 @@ function importBarcodeList(event) {
           throw new Error(`重复的序号或条码：${line}`);
         }
         
-        newBarcodes.push({ serial, code });
+        newBarcodes.push({ serial, code, name }); // 新增名称
       }
       
       // 保存导入的条码列表
@@ -987,10 +1007,13 @@ function exportBarcodeList() {
     return;
   }
   
-  // 生成CSV内容
-  let csvContent = '序号,条码\n';
+  // 生成CSV内容（新增名称列）
+  let csvContent = '序号,条码,名称,数量\n';
+  const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  
   barcodeList.forEach(item => {
-    csvContent += `${item.serial},${item.code}\n`;
+    const quantity = sessionData[item.code]?.quantity || 0;
+    csvContent += `${item.serial},${item.code},${item.name || ''},${quantity}\n`;
   });
   
   // 创建下载链接
@@ -1020,6 +1043,7 @@ function updateSessionCode(oldCode, newCode) {
     // 复制数据到新条码
     sessionData[newCode] = {
       serial: sessionData[oldCode].serial,
+      name: sessionData[oldCode].name, // 新增名称
       quantity: sessionData[oldCode].quantity
     };
     // 删除旧条码数据
@@ -1124,17 +1148,19 @@ function initBarcodeSessionData() {
   barcodeRows.forEach(row => {
     const code = row.dataset.code;
     const serial = row.querySelector('td:first-child').textContent.trim();
+    const name = row.querySelector('td:nth-child(3)').textContent.trim() || ''; // 新增名称
     
     // 如果Session中没有该条码数据，初始化数量为0
     if (!sessionData[code]) {
       sessionData[code] = {
         serial: serial,
+        name: name, // 新增名称
         quantity: 0
       };
     }
     
-    // 更新表格中的数量显示
-    row.querySelector('td:nth-child(3)').textContent = sessionData[code].quantity;
+    // 更新表格中的数量显示（数量列变为第4列）
+    row.querySelector('td:nth-child(4)').textContent = sessionData[code].quantity;
   });
   
   // 保存更新后的数据到localStorage
@@ -1158,11 +1184,11 @@ function updateBarcodeQuantity(code, increment = 1) {
     // 保存到Session
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
-    // 更新页面表格显示
+    // 更新页面表格显示（数量列变为第4列）
     const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
     if (targetRow) {
-      targetRow.querySelector('td:nth-child(3)').textContent = newQty;
-      targetRow.querySelector('td:nth-child(3)').style.color = '#28a745';
+      targetRow.querySelector('td:nth-child(4)').textContent = newQty;
+      targetRow.querySelector('td:nth-child(4)').style.color = '#28a745';
     }
     
     return newQty;
@@ -1204,15 +1230,17 @@ function resetAllQuantities() {
     barcodeRows.forEach(row => {
       const code = row.dataset.code;
       const serial = row.querySelector('td:first-child').textContent.trim();
+      const name = row.querySelector('td:nth-child(3)').textContent.trim() || ''; // 新增名称
       
       // 初始化数量为0
       sessionData[code] = {
         serial: serial,
+        name: name, // 新增名称
         quantity: 0
       };
       
-      // 更新表格显示
-      const qtyCell = row.querySelector('td:nth-child(3)');
+      // 更新表格显示（数量列变为第4列）
+      const qtyCell = row.querySelector('td:nth-child(4)');
       qtyCell.textContent = 0;
       qtyCell.style.color = '';
       
@@ -1339,11 +1367,8 @@ function showCamToast(message, isError = false) {
   }, 3000);
 }
 
-// ========== 修改：定焦扫描 + 识别后暂停1秒 ==========
+// ========== 修改：移除扫描暂停逻辑 ==========
 function Scan(first){
-  // 如果扫描被暂停，直接返回
-  if (isScanPaused) return;
-  
   if(first){
     // 定焦模式：固定扫描区域尺寸，不随视频尺寸变化
     w = 640;  // 固定宽度
@@ -1396,23 +1421,7 @@ function Scan(first){
   scanTimer = setTimeout(Scan,50,false);
 }
 
-// ========== 修改：识别后暂停扫描1秒 ==========
-function pauseScanForOneSecond() {
-  isScanPaused = true;
-  
-  // 1秒后恢复扫描
-  setTimeout(() => {
-    isScanPaused = false;
-    // 重置检测计数，避免恢复后立即重复识别
-    DetectedCount = 0;
-    DetectedCode = "";
-  }, 1000); // 1000ms = 1秒
-}
-
 Quagga.onDetected(function (result) {
-  // 如果扫描被暂停，直接返回
-  if (isScanPaused) return;
-  
   const currentCode = result.codeResult.code;
   
   // ========== 获取当前操作配置 ==========
@@ -1443,9 +1452,6 @@ Quagga.onDetected(function (result) {
       highlightAndFlashBarcode(currentCode);
       return; // 直接返回，不执行后续的数量操作和文本记录
     }
-    
-    // ========== 识别成功，暂停扫描1秒 ==========
-    //pauseScanForOneSecond();
     
     let displayText = currentCode;
     let newQuantity = sessionData[currentCode].quantity;
@@ -1566,15 +1572,16 @@ function createCopyTableButton() {
 
 function copyTableContent() {
   const table = document.getElementById('targetBarcodeTable');
-  let tableText = '序号\t条码\t数量\n'; // 制表符分隔，方便粘贴到Excel
+  let tableText = '序号\t条码\t名称\t数量\n'; // 新增名称列
   
   // 遍历表格行
   const rows = table.querySelectorAll('tbody tr');
   rows.forEach(row => {
     const serial = row.querySelector('td:first-child').textContent.trim();
     const code = row.querySelector('td:nth-child(2)').textContent.trim();
-    const quantity = row.querySelector('td:nth-child(3)').textContent.trim();
-    tableText += `${serial}\t${code}\t${quantity}\n`;
+    const name = row.querySelector('td:nth-child(3)').textContent.trim(); // 新增名称
+    const quantity = row.querySelector('td:nth-child(4)').textContent.trim(); // 数量列变为第4列
+    tableText += `${serial}\t${code}\t${name}\t${quantity}\n`;
   });
   
   // 复制到剪贴板
@@ -1696,14 +1703,15 @@ window.addEventListener('beforeunload', function() {
       <tr>
         <th>序号</th>
         <th>条码</th>
+        <th>名称</th> <!-- 新增名称列 -->
         <th>数量</th>
-        <th>操作</th> <!-- 新增操作列 -->
+        <th>操作</th> <!-- 操作列变为第5列 -->
       </tr>
     </thead>
     <tbody>
       <!-- 初始条码会通过JS从localStorage加载 -->
-      <tr data-code="P005849"><td>1</td><td>P005849</td><td>0</td><td></td></tr>
-      <tr data-code="0019885"><td>2</td><td>0019885</td><td>0</td><td></td></tr>
+      <tr data-code="P005849"><td>1</td><td>P005849</td><td>产品A</td><td>0</td><td></td></tr> <!-- 新增名称示例 -->
+      <tr data-code="0019885"><td>2</td><td>0019885</td><td>物料B</td><td>0</td><td></td></tr> <!-- 新增名称示例 -->
       <!-- 其他初始条码行... -->
     </tbody>
   </table>
