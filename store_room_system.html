@@ -376,6 +376,7 @@ h4 {
   font-style: italic;
 }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 <script>
 var DetectedCount=0,DetectedCode="";
 var video,tmp,tmp_ctx,jan,prev,prev_ctx,w,h,mw,mh,x1,y1;
@@ -394,6 +395,8 @@ const BARCODE_LIST_KEY = 'customBarcodeList'; // 存储自定义条码列表
 var lastProcessedCode = '';
 // ========== 当前编辑的条码ID ==========
 var currentEditingCode = null;
+// ========== 新增：扫描暂停标记 ==========
+var isScanPaused = false;
 
 window.addEventListener('load',function(event){
   // 获取核心元素
@@ -1336,29 +1339,38 @@ function showCamToast(message, isError = false) {
   }, 3000);
 }
 
+// ========== 修改：定焦扫描 + 识别后暂停1秒 ==========
 function Scan(first){
+  // 如果扫描被暂停，直接返回
+  if (isScanPaused) return;
+  
   if(first){
-    w=video.videoWidth || 640; // 兜底尺寸
-    h=video.videoHeight || 480;
-    prev.style.width = (w/2) + "px";
-    prev.style.height = (h/2) + "px";
+    // 定焦模式：固定扫描区域尺寸，不随视频尺寸变化
+    w = 640;  // 固定宽度
+    h = 480;  // 固定高度
+    prev.style.width = "320px";  // 固定显示宽度
+    prev.style.height = "240px"; // 固定显示高度
     prev.width = w;
     prev.height = h;
-    mw=w*0.5;
-    mh=w*0.2;
-    x1=(w-mw)/2;
-    y1=(h-mh)/2;
+    
+    // 定焦扫描区域：固定位置和大小
+    mw = 320;  // 固定扫描宽度
+    mh = 100;  // 固定扫描高度
+    x1 = 160;  // 固定X坐标（居中）
+    y1 = 190;  // 固定Y坐标（居中偏下）
   }
-  // 绘制摄像头画面
-  prev_ctx.drawImage(video,0,0,w,h);
-  // 绘制扫描框
+  
+  // 绘制摄像头画面（缩放适配固定画布）
+  prev_ctx.drawImage(video, 0, 0, video.videoWidth, video.videoHeight, 0, 0, w, h);
+  
+  // 绘制固定的扫描框
   prev_ctx.beginPath();
   prev_ctx.strokeStyle="rgb(255,0,0)";
   prev_ctx.lineWidth=2;
   prev_ctx.rect(x1,y1,mw,mh);
   prev_ctx.stroke();
 
-  // 裁剪识别区域
+  // 裁剪固定的识别区域
   tmp.width=mw;
   tmp.height=mh;
   tmp_ctx.drawImage(prev,x1,y1,mw,mh,0,0,mw,mh);
@@ -1379,10 +1391,28 @@ function Scan(first){
     }
     reader.readAsDataURL(blob);
   });
+  
+  // 继续扫描（固定50ms间隔）
   scanTimer = setTimeout(Scan,50,false);
 }
 
+// ========== 修改：识别后暂停扫描1秒 ==========
+function pauseScanForOneSecond() {
+  isScanPaused = true;
+  
+  // 1秒后恢复扫描
+  setTimeout(() => {
+    isScanPaused = false;
+    // 重置检测计数，避免恢复后立即重复识别
+    DetectedCount = 0;
+    DetectedCode = "";
+  }, 1000); // 1000ms = 1秒
+}
+
 Quagga.onDetected(function (result) {
+  // 如果扫描被暂停，直接返回
+  if (isScanPaused) return;
+  
   const currentCode = result.codeResult.code;
   
   // ========== 获取当前操作配置 ==========
@@ -1413,6 +1443,9 @@ Quagga.onDetected(function (result) {
       highlightAndFlashBarcode(currentCode);
       return; // 直接返回，不执行后续的数量操作和文本记录
     }
+    
+    // ========== 识别成功，暂停扫描1秒 ==========
+    pauseScanForOneSecond();
     
     let displayText = currentCode;
     let newQuantity = sessionData[currentCode].quantity;
