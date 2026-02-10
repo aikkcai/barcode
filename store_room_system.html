@@ -204,57 +204,6 @@ h4 {
 .cam-toast.show {
   opacity: 1;
 }
-/* 查询结果弹窗样式 */
-.query-modal {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background-color: white;
-  padding: 20px;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-  z-index: 10000;
-  min-width: 300px;
-  text-align: center;
-}
-.query-modal h3 {
-  margin: 0 0 15px 0;
-  color: #333;
-}
-.query-modal .qty-info {
-  font-size: 24px;
-  font-weight: bold;
-  color: #007bff;
-  margin: 10px 0;
-}
-.query-modal button {
-  margin-top: 15px;
-  padding: 8px 20px;
-  background-color: #007bff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.query-modal button:hover {
-  background-color: #0056b3;
-}
-/* 遮罩层 */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0,0,0,0.5);
-  z-index: 9999;
-  display: none;
-}
-.modal-overlay.show {
-  display: block;
-}
-
 /* ========== 新增：条码管理样式 ========== */
 /* 条码管理按钮容器 */
 .barcode-manage-btns {
@@ -442,8 +391,8 @@ window.addEventListener('load',function(event){
   // 初始化摄像头
   initCamera();
 
-  // ========== 创建查询弹窗 ==========
-  createQueryModal();
+  // ========== 移除自定义查询弹窗的创建逻辑，改用alert ==========
+  // createQueryModal(); 
 
   // ========== 创建条码编辑/添加弹窗 ==========
   createBarcodeModal();
@@ -1095,40 +1044,21 @@ function createOperationControls() {
   });
 }
 
-function createQueryModal() {
-  // 创建遮罩层
-  const overlay = document.createElement('div');
-  overlay.className = 'modal-overlay';
-  document.body.appendChild(overlay);
-
-  // 创建弹窗
-  const modal = document.createElement('div');
-  modal.className = 'query-modal';
-  modal.style.display = 'none';
-  modal.innerHTML = `
-    <h3 id="modalBarcode"></h3>
-    <div>當前庫存數量：</div>
-    <div class="qty-info" id="modalQuantity">0</div>
-    <button id="closeModalBtn">確定</button>
-  `;
-  document.body.appendChild(modal);
-
-  // 关闭按钮事件
-  document.getElementById('closeModalBtn').addEventListener('click', function() {
-    document.querySelector('.modal-overlay').classList.remove('show');
-    document.querySelector('.query-modal').style.display = 'none';
-  });
-}
-
+// ========== 修改：替换自定义弹窗为alert，显示序号、条码、名称、数量 ==========
 function showQueryModal(code, quantity) {
-  const modal = document.querySelector('.query-modal');
-  const overlay = document.querySelector('.modal-overlay');
+  // 从Session获取完整信息
+  const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  const barcodeInfo = sessionData[code] || { serial: '未知', name: '未知' };
   
-  document.getElementById('modalBarcode').textContent = `條碼：${code}`;
-  document.getElementById('modalQuantity').textContent = quantity;
+  // 组装alert内容，换行显示四个字段
+  const alertContent = 
+    "序号：" + barcodeInfo.serial + "\n" +
+    "条码：" + code + "\n" +
+    "名称：" + (barcodeInfo.name || '无') + "\n" +
+    "数量：" + quantity;
   
-  modal.style.display = 'block';
-  overlay.classList.add('show');
+  // 显示标准alert弹窗
+  alert(alertContent);
   
   // 播放提示音
   playBeepSound();
