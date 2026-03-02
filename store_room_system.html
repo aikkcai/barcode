@@ -327,6 +327,17 @@ h4 {
   margin-top: 5px;
   font-style: italic;
 }
+/* 弹窗遮罩层 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.5);
+  z-index: 9999;
+  display: none;
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
 <script>
@@ -389,9 +400,6 @@ window.addEventListener('load',function(event){
   
   // 初始化摄像头
   initCamera();
-
-  // ========== 移除自定义查询弹窗的创建逻辑，改用alert ==========
-  // createQueryModal(); 
 
   // ========== 创建条码编辑/添加弹窗 ==========
   createBarcodeModal();
@@ -460,7 +468,7 @@ function renderBarcodeTable(barcodeList) {
       <td>${quantity}</td>
       <td>
         <button class="edit-btn" onclick="editBarcode('${item.code}')">编辑</button>
-        <button class="delete-btn" onclick="deleteBarcode('${item.code}')"  hidden>删除</button>
+        <button class="delete-btn" onclick="deleteBarcode('${item.code}')">删除</button>
       </td>
     `;
     
@@ -474,25 +482,30 @@ function getCurrentBarcodeList() {
   return savedBarcodes ? JSON.parse(savedBarcodes) : [];
 }
 
-// ========== 新增：保存条码列表 ==========
+// ========== 新增：保存条码列表（修复核心问题） ==========
 function saveBarcodeList(barcodeList) {
   localStorage.setItem(BARCODE_LIST_KEY, JSON.stringify(barcodeList));
   // 重新渲染表格
   renderBarcodeTable(barcodeList);
-  // 重置Session数据以匹配新的条码列表
-  resetBarcodeSessionData();
+  // ========== 关键修复：移除重置Session数据的调用 ==========
+  // resetBarcodeSessionData(); // 注释掉这行，避免数量被强制重置
 }
 
-// ========== 新增：重置Session数据 ==========
+// ========== 新增：重置Session数据（修复：保留原有数量） ==========
 function resetBarcodeSessionData() {
   const barcodeList = getCurrentBarcodeList();
   let sessionData = {};
   
   barcodeList.forEach(item => {
+    // ========== 修复：保留原有数量，不强制重置为0 ==========
+    // 先获取当前Session中的数量
+    const currentSessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+    const currentQty = currentSessionData[item.code]?.quantity || 0;
+    
     sessionData[item.code] = {
       serial: item.serial,
-      name: item.name, // 新增名称
-      quantity: 0
+      name: item.name,
+      quantity: currentQty // 使用原有数量，而非强制设为0
     };
   });
   
@@ -502,7 +515,9 @@ function resetBarcodeSessionData() {
   barcodeList.forEach(item => {
     const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${item.code}"]`);
     if (targetRow) {
-      targetRow.querySelector('td:nth-child(4)').textContent = 0; // 数量列变为第4列
+      const currentSessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+      const currentQty = currentSessionData[item.code]?.quantity || 0;
+      targetRow.querySelector('td:nth-child(4)').textContent = currentQty;
       targetRow.classList.remove('highlight', 'flash');
     }
   });
@@ -511,7 +526,7 @@ function resetBarcodeSessionData() {
   scannedCodes.clear();
   lastProcessedCode = '';
   
-  showCamToast('条码列表已更新，数量已重置');
+  showCamToast('条码列表已更新，数量保持不变');
 }
 
 // ========== 新增：创建条码管理按钮 ==========
@@ -577,20 +592,11 @@ function createBarcodeManageButtons() {
 
 // ========== 新增：创建条码编辑/添加弹窗 ==========
 function createBarcodeModal() {
-  // 创建遮罩层（复用现有遮罩）
+  // 创建遮罩层
   let overlay = document.querySelector('.modal-overlay');
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
-    // 添加遮罩样式
-    overlay.style.position = 'fixed';
-    overlay.style.top = '0';
-    overlay.style.left = '0';
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
-    overlay.style.zIndex = '9999';
-    overlay.style.display = 'none';
     document.body.appendChild(overlay);
   }
   
@@ -728,7 +734,7 @@ function closeBarcodeModal() {
   currentEditingCode = null;
 }
 
-// ========== 新增：保存条码 ==========
+// ========== 新增：保存条码（完整修复版） ==========
 function saveBarcode() {
   const barcodeList = getCurrentBarcodeList();
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
@@ -762,35 +768,31 @@ function saveBarcode() {
       return;
     }
     
-    // ========== 关键修复1：独立处理Session数据更新 ==========
-    // 无论条码是否修改，都更新Session数据
+    // 更新Session数据（无论条码是否修改）
     if (code !== currentEditingCode) {
-      // 条码修改：复制数据到新条码并删除旧数据
       sessionData[code] = {
         serial: serial,
         name: name,
-        quantity: quantity // 使用编辑的数量
+        quantity: quantity
       };
       delete sessionData[currentEditingCode];
     } else {
-      // 条码未修改：直接更新当前条码的所有信息
       sessionData[code].serial = serial;
       sessionData[code].name = name;
-      sessionData[code].quantity = quantity; // 关键：确保数量被更新
+      sessionData[code].quantity = quantity;
     }
     
-    // ========== 关键修复2：更新条码列表 ==========
+    // 更新条码列表
     const index = barcodeList.findIndex(item => item.code === currentEditingCode);
     if (index !== -1) {
-      // 更新条码列表中的数据
       barcodeList[index] = { serial, code, name };
     }
     
-    // ========== 关键修复3：保存更新后的Session数据 ==========
+    // 保存Session数据
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
   } else if (document.getElementById('singleBarcodeForm').style.display !== 'none') {
-    // 单条添加模式（原有逻辑不变）
+    // 单条添加模式
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
     const name = document.getElementById('barcodeName').value.trim();
@@ -822,7 +824,7 @@ function saveBarcode() {
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
   } else {
-    // 批量添加模式（原有逻辑不变）
+    // 批量添加模式
     const batchInput = document.getElementById('batchBarcodeInput').value.trim();
     if (!batchInput) {
       alert('请输入条码数据！');
@@ -893,11 +895,23 @@ function saveBarcode() {
     barcodeList.push(...newBarcodes);
   }
   
-  // 保存条码列表并重新渲染
+  // 保存条码列表并重新渲染（此时不会重置数量）
   saveBarcodeList(barcodeList);
+  
+  // 手动更新表格显示，确保数量生效
+  const updatedSessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  const targetCode = currentEditingCode || (document.getElementById('barcodeCode')?.value || '');
+  if (targetCode && updatedSessionData[targetCode]) {
+    const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${targetCode}"]`);
+    if (targetRow) {
+      targetRow.querySelector('td:nth-child(4)').textContent = updatedSessionData[targetCode].quantity;
+    }
+  }
+  
   closeBarcodeModal();
   showCamToast(currentEditingCode ? '条码已更新' : '条码添加成功');
 }
+
 // ========== 新增：编辑条码 ==========
 function editBarcode(code) {
   openBarcodeModal(false, code);
@@ -1067,7 +1081,7 @@ function updateSessionCode(oldCode, newCode) {
   }
 }
 
-// ========== 原有功能代码（保持不变） ==========
+// ========== 操作设置控件 ==========
 function createOperationControls() {
   const controlDiv = document.createElement('div');
   controlDiv.className = 'operation-control';
@@ -1109,7 +1123,7 @@ function createOperationControls() {
   });
 }
 
-// ========== 修改：替换自定义弹窗为alert，显示序号、条码、名称、数量 ==========
+// ========== 查询弹窗（替换为alert） ==========
 function showQueryModal(code, quantity) {
   // 从Session获取完整信息
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
@@ -1132,6 +1146,7 @@ function showQueryModal(code, quantity) {
   speakCantonese(`條碼${code}，當前庫存數量${quantity}`);
 }
 
+// ========== 初始化Session数据 ==========
 function initBarcodeSessionData() {
   // 从localStorage获取已存储的数据
   let sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
@@ -1165,6 +1180,7 @@ function initBarcodeSessionData() {
   createResetQuantityButton();
 }
 
+// ========== 更新条码数量 ==========
 function updateBarcodeQuantity(code, increment = 1) {
   let sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
   
@@ -1192,6 +1208,7 @@ function updateBarcodeQuantity(code, increment = 1) {
   return 0;
 }
 
+// ========== 获取当前操作配置 ==========
 function getCurrentOperationConfig() {
   // 获取选中的操作类型
   const operationType = document.querySelector('input[name="operationType"]:checked').value;
@@ -1215,6 +1232,7 @@ function getCurrentOperationConfig() {
   };
 }
 
+// ========== 重置所有数量 ==========
 function resetAllQuantities() {
   if (confirm('确定要重置所有条码数量为0吗？')) {
     // 获取表格中所有条码行
@@ -1255,6 +1273,7 @@ function resetAllQuantities() {
   }
 }
 
+// ========== 创建重置数量按钮 ==========
 function createResetQuantityButton() {
   // 找到复制按钮容器
   const btnContainer = document.querySelector('#copyTableBtn').parentNode;
@@ -1269,6 +1288,7 @@ function createResetQuantityButton() {
   btnContainer.appendChild(resetBtn);
 }
 
+// ========== 初始化摄像头 ==========
 function initCamera() {
   // 请求摄像头权限
   navigator.mediaDevices.getUserMedia(
@@ -1307,6 +1327,7 @@ function initCamera() {
   });
 }
 
+// ========== 刷新摄像头 ==========
 function refreshCamera() {
   const refreshBtn = document.getElementById('refreshCamBtn');
   refreshBtn.classList.add('loading');
@@ -1338,6 +1359,7 @@ function refreshCamera() {
   setTimeout(initCamera, 500);
 }
 
+// ========== 显示摄像头提示 ==========
 function showCamToast(message, isError = false) {
   // 创建提示框（如果不存在）
   let toast = document.querySelector('.cam-toast');
@@ -1362,7 +1384,7 @@ function showCamToast(message, isError = false) {
   }, 3000);
 }
 
-// ========== 修改：移除扫描暂停逻辑 ==========
+// ========== 扫描函数 ==========
 function Scan(first){
   if(first){
     // 定焦模式：固定扫描区域尺寸，不随视频尺寸变化
@@ -1416,13 +1438,14 @@ function Scan(first){
   scanTimer = setTimeout(Scan,50,false);
 }
 
+// ========== 条码识别回调 ==========
 Quagga.onDetected(function (result) {
   const currentCode = result.codeResult.code;
   
-  // ========== 获取当前操作配置 ==========
+  // 获取当前操作配置
   const operationConfig = getCurrentOperationConfig();
   
-  // ========== 检查是否为目标条码 ==========
+  // 检查是否为目标条码
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
   if (!sessionData[currentCode]) {
     // 不是目标条码，播放提示音并提示
@@ -1440,7 +1463,7 @@ Quagga.onDetected(function (result) {
   }
   
   if(DetectedCount>=3){
-    // ========== 核心修改：查询模式豁免重复条码限制 ==========
+    // 查询模式豁免重复条码限制
     if (currentCode === lastProcessedCode && operationConfig.type !== 'query') {
       // 相同条码且不是查询模式：仅播放提示音和闪烁，不执行其他操作
       playBeepSound();
@@ -1451,7 +1474,7 @@ Quagga.onDetected(function (result) {
     let displayText = currentCode;
     let newQuantity = sessionData[currentCode].quantity;
     
-    // ========== 根据操作类型处理 ==========
+    // 根据操作类型处理
     switch(operationConfig.type) {
       case 'inbound': // 入仓
         newQuantity = updateBarcodeQuantity(currentCode, operationConfig.qty);
@@ -1495,6 +1518,7 @@ Quagga.onDetected(function (result) {
   }
 });
 
+// ========== 创建识别类型选择框 ==========
 function createBarcodeTypeSelect() {
   const selectDiv = document.createElement('div');
   selectDiv.className = 'type-select';
@@ -1521,6 +1545,7 @@ function createBarcodeTypeSelect() {
   });
 }
 
+// ========== 创建刷新摄像头按钮 ==========
 function createRefreshCamButton() {
   // 创建按钮容器
   const btnContainer = document.createElement('div');
@@ -1540,6 +1565,7 @@ function createRefreshCamButton() {
   typeSelect.parentNode.insertBefore(btnContainer, typeSelect.nextSibling);
 }
 
+// ========== 创建复制表格按钮 ==========
 function createCopyTableButton() {
   // 创建按钮容器
   const btnContainer = document.createElement('div');
@@ -1565,6 +1591,7 @@ function createCopyTableButton() {
   table.parentNode.insertBefore(btnContainer, table);
 }
 
+// ========== 复制表格内容 ==========
 function copyTableContent() {
   const table = document.getElementById('targetBarcodeTable');
   let tableText = '序号\t条码\t名称\t数量\n'; // 新增名称列
@@ -1595,6 +1622,7 @@ function copyTableContent() {
     });
 }
 
+// ========== 高亮并闪烁条码行 ==========
 function highlightAndFlashBarcode(code) {
   // 查找HTML表格中对应data-code的行
   const targetRow = document.querySelector(`#targetBarcodeTable tr[data-code="${code}"]`);
@@ -1609,6 +1637,7 @@ function highlightAndFlashBarcode(code) {
   }
 }
 
+// ========== 背景闪烁 ==========
 function flashBackground() {
   // 保存原始背景色
   const originalBg = document.body.style.backgroundColor;
@@ -1622,6 +1651,7 @@ function flashBackground() {
   }, 1);
 }
   
+// ========== 初始化音频上下文 ==========
 function initAudioContext() {
   try {
     window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -1631,8 +1661,9 @@ function initAudioContext() {
   }
 }
 
+// ========== 播放提示音 ==========
 function playBeepSound() {
-  flashBackground(); // 🔴 新增：播放提示音时同时闪烁背景
+  flashBackground(); // 播放提示音时同时闪烁背景
   if (!audioContext) return;
   
   if (audioContext.state === 'suspended') {
@@ -1653,6 +1684,7 @@ function playBeepSound() {
   oscillator.stop(audioContext.currentTime + 0.1);
 }
 
+// ========== 粤语语音播报 ==========
 function speakCantonese(code) {
   if (!('speechSynthesis' in window)) {
     console.warn("语音合成不支持");
@@ -1671,6 +1703,7 @@ function speakCantonese(code) {
   window.speechSynthesis.speak(utterance);
 }
 
+// ========== 页面卸载前清理 ==========
 window.addEventListener('beforeunload', function() {
   // 停止扫描定时器
   if (scanTimer) {
@@ -1685,8 +1718,6 @@ window.addEventListener('beforeunload', function() {
 </script>
 </head>
 <body>
-  <!-- 识别类型选择框会通过JS插入到这里（最顶部） -->
-  
   <!-- 摄像头画布 -->
   <canvas id="preview"></canvas>
   <!-- 识别结果文本域 -->
@@ -1704,10 +1735,9 @@ window.addEventListener('beforeunload', function() {
       </tr>
     </thead>
     <tbody>
-      <!-- 初始条码会通过JS从localStorage加载 -->
-      <tr data-code="P005849"><td>1</td><td>P005849</td><td>产品A</td><td>0</td><td></td></tr> <!-- 新增名称示例 -->
-      <tr data-code="0019885"><td>2</td><td>0019885</td><td>物料B</td><td>0</td><td></td></tr> <!-- 新增名称示例 -->
-      <!-- 其他初始条码行... -->
+      <!-- 初始条码示例 -->
+      <tr data-code="P005849"><td>1</td><td>P005849</td><td>产品A</td><td>0</td><td></td></tr>
+      <tr data-code="0019885"><td>2</td><td>0019885</td><td>物料B</td><td>0</td><td></td></tr>
     </tbody>
   </table>
 </body>
