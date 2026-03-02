@@ -133,7 +133,6 @@ h4 {
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
-  margin: 5px 0;
 }
 /* 复制按钮样式 */
 #copyTableBtn {
@@ -771,16 +770,25 @@ function saveBarcode() {
     if (index !== -1) {
       // 如果条码被修改，需要更新Session数据
       if (code !== currentEditingCode) {
-        updateSessionCode(currentEditingCode, code);
+        // 先复制旧数据
+        sessionData[code] = {
+          serial: serial,
+          name: name,
+          quantity: quantity // 使用新输入的数量
+        };
+        // 删除旧条码数据
+        delete sessionData[currentEditingCode];
+      } else {
+        // 条码未修改，直接更新数量
+        sessionData[code].serial = serial;
+        sessionData[code].name = name;
+        sessionData[code].quantity = quantity; // 关键修复：更新数量
       }
       
+      // 更新条码列表
       barcodeList[index] = { serial, code, name }; // 新增名称
       
-      // 【新增】更新Session中的数量
-      sessionData[code] = sessionData[code] || {};
-      sessionData[code].serial = serial;
-      sessionData[code].name = name;
-      sessionData[code].quantity = quantity;
+      // 保存Session数据
       localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     }
     
