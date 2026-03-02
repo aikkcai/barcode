@@ -737,20 +737,18 @@ function saveBarcode() {
     // 编辑模式
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
-    const name = document.getElementById('barcodeName').value.trim(); // 新增名称
-    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0; // 【新增】获取数量
+    const name = document.getElementById('barcodeName').value.trim();
+    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0; // 获取编辑的数量
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
       return;
     }
     
-    // 检查序号是否重复（排除当前编辑项）
+    // 检查序号/条码重复（排除当前编辑项）
     const isSerialDuplicate = barcodeList.some(
       item => item.serial === serial && item.code !== currentEditingCode
     );
-    
-    // 检查条码是否重复（排除当前编辑项）
     const isCodeDuplicate = barcodeList.some(
       item => item.code === code && item.code !== currentEditingCode
     );
@@ -759,52 +757,50 @@ function saveBarcode() {
       alert('序号已存在，请更换！');
       return;
     }
-    
     if (isCodeDuplicate) {
       alert('条码已存在，请更换！');
       return;
     }
     
-    // 更新条码
-    const index = barcodeList.findIndex(item => item.code === currentEditingCode);
-    if (index !== -1) {
-      // 如果条码被修改，需要更新Session数据
-      if (code !== currentEditingCode) {
-        // 先复制旧数据
-        sessionData[code] = {
-          serial: serial,
-          name: name,
-          quantity: quantity // 使用新输入的数量
-        };
-        // 删除旧条码数据
-        delete sessionData[currentEditingCode];
-      } else {
-        // 条码未修改，直接更新数量
-        sessionData[code].serial = serial;
-        sessionData[code].name = name;
-        sessionData[code].quantity = quantity; // 关键修复：更新数量
-      }
-      
-      // 更新条码列表
-      barcodeList[index] = { serial, code, name }; // 新增名称
-      
-      // 保存Session数据
-      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    // ========== 关键修复1：独立处理Session数据更新 ==========
+    // 无论条码是否修改，都更新Session数据
+    if (code !== currentEditingCode) {
+      // 条码修改：复制数据到新条码并删除旧数据
+      sessionData[code] = {
+        serial: serial,
+        name: name,
+        quantity: quantity // 使用编辑的数量
+      };
+      delete sessionData[currentEditingCode];
+    } else {
+      // 条码未修改：直接更新当前条码的所有信息
+      sessionData[code].serial = serial;
+      sessionData[code].name = name;
+      sessionData[code].quantity = quantity; // 关键：确保数量被更新
     }
     
+    // ========== 关键修复2：更新条码列表 ==========
+    const index = barcodeList.findIndex(item => item.code === currentEditingCode);
+    if (index !== -1) {
+      // 更新条码列表中的数据
+      barcodeList[index] = { serial, code, name };
+    }
+    
+    // ========== 关键修复3：保存更新后的Session数据 ==========
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    
   } else if (document.getElementById('singleBarcodeForm').style.display !== 'none') {
-    // 单条添加模式
+    // 单条添加模式（原有逻辑不变）
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
-    const name = document.getElementById('barcodeName').value.trim(); // 新增名称
-    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0; // 【新增】获取数量
+    const name = document.getElementById('barcodeName').value.trim();
+    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0;
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
       return;
     }
     
-    // 检查序号和条码是否重复
     const isSerialDuplicate = barcodeList.some(item => item.serial === serial);
     const isCodeDuplicate = barcodeList.some(item => item.code === code);
     
@@ -812,16 +808,12 @@ function saveBarcode() {
       alert('序号已存在，请更换！');
       return;
     }
-    
     if (isCodeDuplicate) {
       alert('条码已存在，请更换！');
       return;
     }
     
-    // 添加新条码
-    barcodeList.push({ serial, code, name }); // 新增名称
-    
-    // 【新增】初始化Session中的数量
+    barcodeList.push({ serial, code, name });
     sessionData[code] = {
       serial: serial,
       name: name,
@@ -830,7 +822,7 @@ function saveBarcode() {
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
   } else {
-    // 批量添加模式
+    // 批量添加模式（原有逻辑不变）
     const batchInput = document.getElementById('batchBarcodeInput').value.trim();
     if (!batchInput) {
       alert('请输入条码数据！');
@@ -847,44 +839,36 @@ function saveBarcode() {
       const trimmedLine = line.trim();
       let serial, code, name = '', quantity = 0;
       
-      // 检查格式：序号,条码,名称,数量 或 条码,名称,数量 或 条码,数量 或 仅条码
       const parts = trimmedLine.split(',').map(part => part.trim());
       if (parts.length === 4) {
-        // 序号,条码,名称,数量
         serial = parts[0];
         code = parts[1];
         name = parts[2];
         quantity = parseInt(parts[3]) || 0;
       } else if (parts.length === 3) {
-        // 条码,名称,数量
         maxSerial++;
         serial = maxSerial.toString();
         code = parts[0];
         name = parts[1];
         quantity = parseInt(parts[2]) || 0;
       } else if (parts.length === 2) {
-        // 条码,数量
         maxSerial++;
         serial = maxSerial.toString();
         code = parts[0];
         quantity = parseInt(parts[1]) || 0;
       } else {
-        // 仅条码格式，自动生成序号，数量为0
         maxSerial++;
         serial = maxSerial.toString();
         code = trimmedLine;
       }
       
-      // 验证
       if (!code) {
         alert(`条码不能为空：${line}`);
         return;
       }
       
-      // 检查重复
       const isSerialDuplicate = barcodeList.some(item => item.serial === serial) || 
                                 newBarcodes.some(item => item.serial === serial);
-      
       const isCodeDuplicate = barcodeList.some(item => item.code === code) || 
                               newBarcodes.some(item => item.code === code);
       
@@ -892,15 +876,12 @@ function saveBarcode() {
         alert(`序号重复：${serial} (对应条码：${code})`);
         return;
       }
-      
       if (isCodeDuplicate) {
         alert(`条码重复：${code} (对应序号：${serial})`);
         return;
       }
       
-      newBarcodes.push({ serial, code, name }); // 新增名称
-      
-      // 【新增】初始化Session中的数量
+      newBarcodes.push({ serial, code, name });
       sessionData[code] = {
         serial: serial,
         name: name,
@@ -908,19 +889,15 @@ function saveBarcode() {
       };
     }
     
-    // 保存Session数据
     localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
-    
-    // 添加批量条码
     barcodeList.push(...newBarcodes);
   }
   
-  // 保存并渲染
+  // 保存条码列表并重新渲染
   saveBarcodeList(barcodeList);
   closeBarcodeModal();
   showCamToast(currentEditingCode ? '条码已更新' : '条码添加成功');
 }
-
 // ========== 新增：编辑条码 ==========
 function editBarcode(code) {
   openBarcodeModal(false, code);
