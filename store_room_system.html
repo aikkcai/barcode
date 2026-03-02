@@ -461,7 +461,7 @@ function renderBarcodeTable(barcodeList) {
       <td>${quantity}</td>
       <td>
         <button class="edit-btn" onclick="editBarcode('${item.code}')">编辑</button>
-        <button class="delete-btn" onclick="deleteBarcode('${item.code}')">删除</button>
+        <button class="delete-btn" onclick="deleteBarcode('${item.code}')"  hidden>删除</button>
       </td>
     `;
     
