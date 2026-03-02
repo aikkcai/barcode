@@ -442,17 +442,23 @@ function renderBarcodeTable(barcodeList) {
   // 按序号排序
   barcodeList.sort((a, b) => parseInt(a.serial) - parseInt(b.serial));
   
+  // 获取Session中的数量数据
+  const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+  
   // 渲染每一行
   barcodeList.forEach(item => {
     const row = document.createElement('tr');
     row.dataset.code = item.code;
+    
+    // 获取数量（默认0）
+    const quantity = sessionData[item.code]?.quantity || 0;
     
     // 创建单元格（新增名称列）
     row.innerHTML = `
       <td>${item.serial}</td>
       <td>${item.code}</td>
       <td>${item.name || ''}</td> <!-- 新增名称列 -->
-      <td>0</td>
+      <td>${quantity}</td>
       <td>
         <button class="edit-btn" onclick="editBarcode('${item.code}')">编辑</button>
         <button class="delete-btn" onclick="deleteBarcode('${item.code}')">删除</button>
@@ -577,6 +583,15 @@ function createBarcodeModal() {
   if (!overlay) {
     overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
+    // 添加遮罩样式
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+    overlay.style.zIndex = '9999';
+    overlay.style.display = 'none';
     document.body.appendChild(overlay);
   }
   
@@ -585,7 +600,7 @@ function createBarcodeModal() {
   modal.id = 'barcodeModal';
   modal.className = 'barcode-modal';
   
-  // 弹窗内容（新增名称输入框）
+  // 弹窗内容（新增数量输入框）
   modal.innerHTML = `
     <h3 id="modalTitle">添加条码</h3>
     <div id="singleBarcodeForm" class="modal-form-content">
@@ -601,20 +616,24 @@ function createBarcodeModal() {
         <label for="barcodeName">名称：</label>
         <input type="text" id="barcodeName" placeholder="例如：产品A、物料B">
       </div>
+      <div class="modal-form-group"> <!-- 【新增】数量输入框 -->
+        <label for="barcodeQuantity">数量：</label>
+        <input type="number" id="barcodeQuantity" min="0" value="0" placeholder="直接设置当前数量">
+      </div>
     </div>
     <div id="batchBarcodeForm" class="modal-form-content" style="display:none;">
       <div class="modal-form-group">
         <label>批量输入条码（每行一个）：</label>
         <textarea id="batchBarcodeInput" placeholder="示例：
-1,P005849,产品A
-2,0019885,物料B
+1,P005849,产品A,10
+2,0019885,物料B,5
 或者每行只输入条码（序号自动生成）：
-P005849,产品A
-0019885
+P005849,产品A,8
+0019885,12
 或者仅条码：
 P005849
 0019885"></textarea>
-        <div class="hint-text">提示：支持三种格式 - 1. 序号,条码,名称  2. 条码,名称  3. 仅条码（序号自动生成）</div>
+        <div class="hint-text">提示：支持四种格式 - 1. 序号,条码,名称,数量  2. 条码,名称,数量  3. 条码,数量  4. 仅条码（序号自动生成，数量为0）</div>
       </div>
     </div>
     <div class="modal-btn-group">
@@ -651,6 +670,7 @@ function openBarcodeModal(isBatch = false, code = null) {
   document.getElementById('barcodeSerial').value = '';
   document.getElementById('barcodeCode').value = '';
   document.getElementById('barcodeName').value = ''; // 新增名称重置
+  document.getElementById('barcodeQuantity').value = '0'; // 【新增】数量重置
   document.getElementById('batchBarcodeInput').value = '';
   
   // 设置当前编辑的条码
@@ -666,6 +686,11 @@ function openBarcodeModal(isBatch = false, code = null) {
       document.getElementById('barcodeSerial').value = item.serial;
       document.getElementById('barcodeCode').value = item.code;
       document.getElementById('barcodeName').value = item.name || ''; // 新增名称赋值
+      
+      // 【新增】从Session获取当前数量并填充
+      const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
+      const quantity = sessionData[code]?.quantity || 0;
+      document.getElementById('barcodeQuantity').value = quantity;
     }
     isBatch = false; // 编辑模式只能单条编辑
   } else {
@@ -680,6 +705,8 @@ function openBarcodeModal(isBatch = false, code = null) {
         ? Math.max(...barcodeList.map(item => parseInt(item.serial))) 
         : 0;
       document.getElementById('barcodeSerial').value = maxSerial + 1;
+      // 【新增】默认数量为0
+      document.getElementById('barcodeQuantity').value = '0';
     }
   }
   
@@ -687,9 +714,9 @@ function openBarcodeModal(isBatch = false, code = null) {
   singleForm.style.display = isBatch ? 'none' : 'block';
   batchForm.style.display = isBatch ? 'block' : 'none';
   
-  // 显示弹窗
+  // 显示弹窗和遮罩
   modal.classList.add('show');
-  overlay.classList.add('show');
+  overlay.style.display = 'block';
 }
 
 // ========== 新增：关闭条码弹窗 ==========
@@ -698,19 +725,21 @@ function closeBarcodeModal() {
   const overlay = document.querySelector('.modal-overlay');
   
   modal.classList.remove('show');
-  overlay.classList.remove('show');
+  overlay.style.display = 'none';
   currentEditingCode = null;
 }
 
 // ========== 新增：保存条码 ==========
 function saveBarcode() {
   const barcodeList = getCurrentBarcodeList();
+  const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
   
   if (currentEditingCode) {
     // 编辑模式
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
     const name = document.getElementById('barcodeName').value.trim(); // 新增名称
+    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0; // 【新增】获取数量
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
@@ -746,6 +775,13 @@ function saveBarcode() {
       }
       
       barcodeList[index] = { serial, code, name }; // 新增名称
+      
+      // 【新增】更新Session中的数量
+      sessionData[code] = sessionData[code] || {};
+      sessionData[code].serial = serial;
+      sessionData[code].name = name;
+      sessionData[code].quantity = quantity;
+      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     }
     
   } else if (document.getElementById('singleBarcodeForm').style.display !== 'none') {
@@ -753,6 +789,7 @@ function saveBarcode() {
     const serial = document.getElementById('barcodeSerial').value.trim();
     const code = document.getElementById('barcodeCode').value.trim();
     const name = document.getElementById('barcodeName').value.trim(); // 新增名称
+    const quantity = parseInt(document.getElementById('barcodeQuantity').value) || 0; // 【新增】获取数量
     
     if (!serial || !code) {
       alert('序号和条码不能为空！');
@@ -776,6 +813,14 @@ function saveBarcode() {
     // 添加新条码
     barcodeList.push({ serial, code, name }); // 新增名称
     
+    // 【新增】初始化Session中的数量
+    sessionData[code] = {
+      serial: serial,
+      name: name,
+      quantity: quantity
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+    
   } else {
     // 批量添加模式
     const batchInput = document.getElementById('batchBarcodeInput').value.trim();
@@ -792,23 +837,31 @@ function saveBarcode() {
     
     for (const line of lines) {
       const trimmedLine = line.trim();
-      let serial, code, name = '';
+      let serial, code, name = '', quantity = 0;
       
-      // 检查是否是 序号,条码,名称 格式 或 条码,名称 格式
+      // 检查格式：序号,条码,名称,数量 或 条码,名称,数量 或 条码,数量 或 仅条码
       const parts = trimmedLine.split(',').map(part => part.trim());
-      if (parts.length === 3) {
-        // 序号,条码,名称
+      if (parts.length === 4) {
+        // 序号,条码,名称,数量
         serial = parts[0];
         code = parts[1];
         name = parts[2];
-      } else if (parts.length === 2) {
-        // 条码,名称
+        quantity = parseInt(parts[3]) || 0;
+      } else if (parts.length === 3) {
+        // 条码,名称,数量
         maxSerial++;
         serial = maxSerial.toString();
         code = parts[0];
         name = parts[1];
+        quantity = parseInt(parts[2]) || 0;
+      } else if (parts.length === 2) {
+        // 条码,数量
+        maxSerial++;
+        serial = maxSerial.toString();
+        code = parts[0];
+        quantity = parseInt(parts[1]) || 0;
       } else {
-        // 仅条码格式，自动生成序号
+        // 仅条码格式，自动生成序号，数量为0
         maxSerial++;
         serial = maxSerial.toString();
         code = trimmedLine;
@@ -838,7 +891,17 @@ function saveBarcode() {
       }
       
       newBarcodes.push({ serial, code, name }); // 新增名称
+      
+      // 【新增】初始化Session中的数量
+      sessionData[code] = {
+        serial: serial,
+        name: name,
+        quantity: quantity
+      };
     }
+    
+    // 保存Session数据
+    localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
     
     // 添加批量条码
     barcodeList.push(...newBarcodes);
@@ -899,16 +962,22 @@ function importBarcodeList(event) {
       const content = e.target.result;
       const lines = content.split('\n').filter(line => line.trim());
       const newBarcodes = [];
+      const sessionData = {};
       
       for (const line of lines) {
         const trimmedLine = line.trim();
         if (!trimmedLine) continue;
         
-        let serial, code, name = '';
+        let serial, code, name = '', quantity = 0;
         
-        // 支持 序号,条码,名称 格式 或 序号,条码 格式
+        // 支持 序号,条码,名称,数量 格式 或 序号,条码,名称 格式 或 序号,条码 格式
         const parts = trimmedLine.split(',').map(part => part.trim());
-        if (parts.length === 3) {
+        if (parts.length === 4) {
+          serial = parts[0];
+          code = parts[1];
+          name = parts[2];
+          quantity = parseInt(parts[3]) || 0;
+        } else if (parts.length === 3) {
           serial = parts[0];
           code = parts[1];
           name = parts[2];
@@ -931,10 +1000,21 @@ function importBarcodeList(event) {
         }
         
         newBarcodes.push({ serial, code, name }); // 新增名称
+        
+        // 初始化Session数据
+        sessionData[code] = {
+          serial: serial,
+          name: name,
+          quantity: quantity
+        };
       }
       
-      // 保存导入的条码列表
-      saveBarcodeList(newBarcodes);
+      // 保存导入的条码列表和Session数据
+      localStorage.setItem(BARCODE_LIST_KEY, JSON.stringify(newBarcodes));
+      localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
+      
+      // 重新渲染
+      renderBarcodeTable(newBarcodes);
       showCamToast(`成功导入 ${newBarcodes.length} 个条码`);
       
     } catch (error) {
@@ -956,7 +1036,7 @@ function exportBarcodeList() {
     return;
   }
   
-  // 生成CSV内容（新增名称列）
+  // 生成CSV内容（新增名称列和数量列）
   let csvContent = '序号,条码,名称,数量\n';
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
   
