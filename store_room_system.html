@@ -1125,26 +1125,44 @@ function createOperationControls() {
 }
 
 // ========== 查询弹窗（替换为alert） ==========
+// ========== 查詢專用 Modal（可點擊「編輯」按鈕） ==========
 function showQueryModal(code, quantity) {
-  // 从Session获取完整信息
   const sessionData = JSON.parse(localStorage.getItem(SESSION_KEY) || '{}');
-  const barcodeInfo = sessionData[code] || { serial: '未知', name: '未知' };
-  
-  // 组装alert内容，换行显示四个字段
-  const alertContent = 
-    "序号：" + barcodeInfo.serial + "\n" +
-    "条码：" + code + "\n" +
-    "名称：" + (barcodeInfo.name || '无') + "\n" +
-    "数量：" + quantity;
-  
-  // 显示标准alert弹窗
-  alert(alertContent);
-  
-  // 播放提示音
+  const info = sessionData[code] || { serial: '未知', name: '未知' };
+
+  // 填入資料
+  document.getElementById('querySerial').textContent = info.serial;
+  document.getElementById('queryCode').textContent = code;
+  document.getElementById('queryName').textContent = info.name || '無名稱';
+  document.getElementById('queryQuantity').textContent = quantity;
+
+  const modal = document.getElementById('queryModal');
+  const overlay = document.querySelector('.modal-overlay'); // 使用你原本的遮罩層
+
+  // 顯示 modal
+  modal.style.display = 'block';
+  if (overlay) overlay.style.display = 'block';
+
+  // 播放提示音 + 語音播報
   playBeepSound();
-  
-  // 粤语播报数量
   speakCantonese(`條碼${code}，當前庫存數量${quantity}`);
+
+  // 「編輯」按鈕 → 直接呼叫你現有的編輯函數
+  document.getElementById('queryEditBtn').onclick = function() {
+    closeQueryModal();           // 先關閉查詢視窗
+    editBarcode(code);           // 打開你原本的編輯彈窗
+  };
+
+  // 「關閉」按鈕
+  document.getElementById('queryCloseBtn').onclick = closeQueryModal;
+}
+
+// 關閉查詢 modal 的函數
+function closeQueryModal() {
+  const modal = document.getElementById('queryModal');
+  const overlay = document.querySelector('.modal-overlay');
+  if (modal) modal.style.display = 'none';
+  if (overlay) overlay.style.display = 'none';
 }
 
 // ========== 初始化Session数据 ==========
@@ -1741,5 +1759,21 @@ window.addEventListener('beforeunload', function() {
       <tr data-code="0019885"><td>2</td><td>0019885</td><td>物料B</td><td>0</td><td></td></tr>
     </tbody>
   </table>
+  <!-- 查詢專用 Modal -->
+<div id="queryModal" class="barcode-modal" style="display:none; max-width:420px;">
+  <h3 id="queryModalTitle">查詢結果</h3>
+  
+  <div style="margin:15px 0; line-height:1.8;">
+    <strong>序號：</strong> <span id="querySerial"></span><br>
+    <strong>條碼：</strong> <span id="queryCode"></span><br>
+    <strong>名稱：</strong> <span id="queryName"></span><br>
+    <strong>數量：</strong> <span id="queryQuantity" style="font-size:1.2em;color:#28a745;"></span>
+  </div>
+
+  <div class="modal-btn-group" style="margin-top:20px;">
+    <button id="queryEditBtn" class="btn save-btn">編輯此物品</button>
+    <button id="queryCloseBtn" class="btn cancel-btn">關閉</button>
+  </div>
+</div>
 </body>
 </html>
