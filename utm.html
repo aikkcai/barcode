@@ -40,6 +40,19 @@
             width: 100%;
             height: 100%;
         }
+        /* 紅色掃描框 */
+        .scan-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 100px;
+            border: 3px solid #ff0000;
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.3);
+            z-index: 10;
+            pointer-events: none;
+        }
         .input-group {
             margin-bottom: 12px;
         }
@@ -109,9 +122,11 @@
 
     <div class="scan-area">
         <div id="interactive" class="viewport"></div>
+        <!-- 紅色掃描框 -->
+        <div class="scan-box"></div>
     </div>
 
-    <div id="status" class="info">點擊開始掃描，相機開啟後對準條碼</div>
+    <div id="status" class="info">點擊開始掃描，對準紅框掃條碼</div>
 
     <div class="input-group">
         <label>條碼類型</label>
@@ -135,7 +150,6 @@
     <div class="btn-group">
         <button id="scanBtn">開始掃描</button>
         <button id="captureBtn">拍照儲存</button>
-        <!-- 刷新按鈕 -->
         <button id="resetBtn">刷新相機</button>
     </div>
 </div>
@@ -145,6 +159,7 @@
     let lastBarcode = "";
     let currentSuffix = "A";
     let isScanning = false;
+    let cameraStream = null;
 
     const scanBtn = document.getElementById("scanBtn");
     const captureBtn = document.getElementById("captureBtn");
@@ -162,34 +177,30 @@
         return ["code_128_reader"];
     }
 
-    // 重置相機與掃描狀態（解決黑屏）
+    // 重置相機（解決黑屏）
     function resetCamera() {
         try {
             Quagga.stop();
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+            }
         } catch (e) {}
         isScanning = false;
         scanBtn.textContent = "開始掃描";
-        statusText.textContent = "已重置相機，可重新開始掃描";
+        statusText.textContent = "已重置 → 點開始掃描";
         statusText.className = "info";
         
-        // 清空掃描區避免黑屏殘影
         const viewport = document.querySelector('#interactive');
-        if (viewport) {
-            viewport.innerHTML = '';
-        }
+        if (viewport) viewport.innerHTML = '';
     }
 
-    function initQuagga() {
+    // 掃描條碼
+    function startScan() {
         if (isScanning) {
-            Quagga.stop();
-            isScanning = false;
-            scanBtn.textContent = "開始掃描";
-            statusText.textContent = "已停止掃描";
-            statusText.className = "info";
+            resetCamera();
             return;
         }
 
-        // 先清空避免重複初始化黑屏
         resetCamera();
 
         Quagga.init({
@@ -197,36 +208,35 @@
                 name: "Live",
                 type: "LiveStream",
                 target: document.querySelector('#interactive'),
-                constraints: {
-                    facingMode: "environment"
-                },
+                constraints: { facingMode: "environment" },
             },
-            decoder: {
-                readers: getSelectedReader()
-            }
+            decoder: { readers: getSelectedReader() },
+            locator: { patchSize: "medium", halfSample: true }
         }, function (err) {
             if (err) {
-                statusText.textContent = "相機開啟失敗：" + err;
+                statusText.textContent = "相機異常：" + err;
                 statusText.className = "error";
                 return;
             }
             Quagga.start();
             isScanning = true;
             scanBtn.textContent = "掃描中...";
-            statusText.textContent = "相機已開啟，請對準條碼";
+            statusText.textContent = "掃描中 → 對準紅色框";
             statusText.className = "info";
         });
 
+        // 掃描成功
         Quagga.onDetected(function (result) {
             const code = result.codeResult.code;
             if (code !== lastBarcode) {
                 lastBarcode = code;
                 currentSuffix = "A";
                 updateCurrentName();
-                statusText.textContent = "掃描成功：" + code;
+                
+                statusText.textContent = "掃描成功：" + code + " → 可拍照";
                 statusText.className = "success";
-
-                Quagga.stop();
+                
+                // 不關閉相機 → 直接保持畫面變拍照模式
                 isScanning = false;
                 scanBtn.textContent = "開始掃描";
             }
@@ -238,23 +248,12 @@
         currentNameInput.value = baseName + currentSuffix;
     }
 
-    // 刷新按鈕事件
-    resetBtn.addEventListener("click", resetCamera);
-    scanBtn.addEventListener("click", initQuagga);
-
-    manualNameInput.addEventListener("input", function () {
-        if (this.value.trim()) {
-            currentSuffix = "A";
-        }
-        updateCurrentName();
-    });
-
+    // 拍照
     captureBtn.addEventListener("click", async function () {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: "environment" }
             });
-
             const video = document.createElement('video');
             video.srcObject = stream;
             await video.play();
@@ -275,17 +274,25 @@
                 link.click();
 
                 stream.getTracks().forEach(track => track.stop());
-
                 currentSuffix = String.fromCharCode(currentSuffix.charCodeAt(0) + 1);
                 updateCurrentName();
 
-                statusText.textContent = "拍照完成：" + fileName + ".jpg";
+                statusText.textContent = "儲存：" + fileName + ".jpg";
                 statusText.className = "success";
             });
         } catch (err) {
-            statusText.textContent = "拍照失敗：" + err;
+            statusText.textContent = "拍照失敗";
             statusText.className = "error";
         }
+    });
+
+    // 按鈕
+    scanBtn.addEventListener("click", startScan);
+    resetBtn.addEventListener("click", resetCamera);
+
+    manualNameInput.addEventListener("input", function () {
+        if (this.value.trim()) currentSuffix = "A";
+        updateCurrentName();
     });
 </script>
 </body>
