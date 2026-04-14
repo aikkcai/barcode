@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>條碼辨識 + 拍照自動命名</title>
+    <title>條碼辨識 · 拍照自動命名</title>
     <style>
         * {
             margin: 0;
@@ -78,6 +78,10 @@
             background: #4CAF50;
             color: white;
         }
+        #resetBtn {
+            background: #ff9800;
+            color: white;
+        }
         #status {
             text-align: center;
             padding: 10px;
@@ -109,7 +113,6 @@
 
     <div id="status" class="info">點擊開始掃描，相機開啟後對準條碼</div>
 
-    <!-- 條碼類型選擇 -->
     <div class="input-group">
         <label>條碼類型</label>
         <select id="barcodeType">
@@ -132,6 +135,8 @@
     <div class="btn-group">
         <button id="scanBtn">開始掃描</button>
         <button id="captureBtn">拍照儲存</button>
+        <!-- 刷新按鈕 -->
+        <button id="resetBtn">刷新相機</button>
     </div>
 </div>
 
@@ -143,6 +148,7 @@
 
     const scanBtn = document.getElementById("scanBtn");
     const captureBtn = document.getElementById("captureBtn");
+    const resetBtn = document.getElementById("resetBtn");
     const manualNameInput = document.getElementById("manualName");
     const currentNameInput = document.getElementById("currentName");
     const statusText = document.getElementById("status");
@@ -156,6 +162,23 @@
         return ["code_128_reader"];
     }
 
+    // 重置相機與掃描狀態（解決黑屏）
+    function resetCamera() {
+        try {
+            Quagga.stop();
+        } catch (e) {}
+        isScanning = false;
+        scanBtn.textContent = "開始掃描";
+        statusText.textContent = "已重置相機，可重新開始掃描";
+        statusText.className = "info";
+        
+        // 清空掃描區避免黑屏殘影
+        const viewport = document.querySelector('#interactive');
+        if (viewport) {
+            viewport.innerHTML = '';
+        }
+    }
+
     function initQuagga() {
         if (isScanning) {
             Quagga.stop();
@@ -165,6 +188,9 @@
             statusText.className = "info";
             return;
         }
+
+        // 先清空避免重複初始化黑屏
+        resetCamera();
 
         Quagga.init({
             inputStream: {
@@ -212,6 +238,8 @@
         currentNameInput.value = baseName + currentSuffix;
     }
 
+    // 刷新按鈕事件
+    resetBtn.addEventListener("click", resetCamera);
     scanBtn.addEventListener("click", initQuagga);
 
     manualNameInput.addEventListener("input", function () {
