@@ -37,15 +37,18 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            display: none;
-        }
-        #interactive {
-            width: 100%;
-            height: 100%;
             position: absolute;
             top:0; left:0;
+            z-index: 1;
         }
-        /* 紅色掃描框 - 預設隱藏 */
+        #interactive {
+            position: absolute;
+            top:0; left:0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
         .scan-box {
             position: absolute;
             top: 50%;
@@ -55,9 +58,9 @@
             height: 110px;
             border: 3px solid #ff0000;
             box-shadow: 0 0 0 1000px rgba(0,0,0,0.4);
-            z-index: 10;
+            z-index: 3;
             pointer-events: none;
-            display: none; /* 預設關閉 */
+            display: none;
         }
         .input-group {
             margin-bottom: 12px;
@@ -117,7 +120,7 @@
     <div id="status" class="info">點開始掃描 → 對準紅框</div>
 
     <div class="input-group">
-        <label>條碼類型</label>
+        <label>條碼</label>
         <select id="barcodeType">
             <option value="code128" selected>CODE-128</option>
             <option value="ean13">EAN-13</option>
@@ -171,7 +174,7 @@
         try { Quagga.stop(); } catch (e) {}
         isScanning = false;
         scanBtn.textContent = "開始掃描";
-        scanBox.style.display = "none"; // 關閉紅框
+        scanBox.style.display = "none";
     }
 
     async function startScan() {
@@ -182,13 +185,17 @@
         }
 
         await stopAll();
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        
+
+        if (!stream) {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" }
+            });
+        }
+
         camera.srcObject = stream;
         camera.style.display = "block";
         await camera.play();
 
-        // 開啟紅框
         scanBox.style.display = "block";
 
         Quagga.init({
@@ -200,7 +207,7 @@
             },
             decoder: { readers: getReader() }
         }, err => {
-            if (err) { status.textContent = "啟動失敗："+err; return; }
+            if (err) { status.textContent = "啟動失敗：" + err; return; }
             Quagga.start();
             isScanning = true;
             scanBtn.textContent = "掃描中...";
@@ -213,11 +220,10 @@
                 lastBarcode = code;
                 currentSuffix = "A";
                 updateName();
-                
-                // ✅ 成功後：關閉掃描 + 隱藏紅框 → 進入拍照模式
+
                 Quagga.stop();
                 stopAll();
-                
+
                 status.textContent = "成功：" + code + " → 可拍照";
                 status.className = "success";
             }
@@ -253,7 +259,10 @@
 
     resetBtn.onclick = async () => {
         await stopAll();
-        if(stream) stream.getTracks().forEach(t=>t.stop());
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
         camera.style.display = "none";
         status.textContent = "已重置 → 點開始掃描";
     };
