@@ -38,16 +38,9 @@
             height: 100%;
             object-fit: cover;
             position: absolute;
-            top:0; left:0;
+            top: 0;
+            left: 0;
             z-index: 1;
-        }
-        #interactive {
-            position: absolute;
-            top:0; left:0;
-            width: 100%;
-            height: 100%;
-            z-index: 2;
-            pointer-events: none;
         }
         .scan-box {
             position: absolute;
@@ -57,10 +50,10 @@
             width: 220px;
             height: 110px;
             border: 3px solid #ff0000;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.4);
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.5);
             z-index: 3;
             pointer-events: none;
-            display: none;
+            display: none; /* 預設隱藏，只有掃描時顯示 */
         }
         .input-group {
             margin-bottom: 12px;
@@ -109,18 +102,17 @@
 </head>
 <body>
 <div class="container">
-    <h2 class="title">條碼辨識 · 拍照自動命名</h2>
+    <h2 class="title">UTM條碼辨識 · 拍照自動命名</h2>
 
     <div class="scan-area">
         <video id="camera" autoplay playsinline></video>
-        <div id="interactive"></div>
         <div class="scan-box"></div>
     </div>
 
-    <div id="status" class="info">點開始掃描 → 對準紅框</div>
+    <div id="status" class="info">點「開始掃描」 → 對準紅框</div>
 
     <div class="input-group">
-        <label>條碼</label>
+        <label>條碼類型</label>
         <select id="barcodeType">
             <option value="code128" selected>CODE-128</option>
             <option value="ean13">EAN-13</option>
@@ -129,12 +121,12 @@
     </div>
 
     <div class="input-group">
-        <label>手動檔名</label>
+        <label>手動檔名（選填）</label>
         <input type="text" id="manualName" placeholder="輸入自訂檔名">
     </div>
 
     <div class="input-group">
-        <label>目前名稱</label>
+        <label>目前檔名</label>
         <input type="text" id="currentName" readonly>
     </div>
 
@@ -170,8 +162,16 @@
         return ["code_128_reader"];
     }
 
-    async function stopAll() {
-        try { Quagga.stop(); } catch (e) {}
+    function updateName() {
+        const base = manualName.value.trim() || lastBarcode || "未命名";
+        currentName.value = base + currentSuffix;
+    }
+
+    // 只停止掃描，不關閉相機
+    function stopScanning() {
+        try {
+            Quagga.stop();
+        } catch (e) {}
         isScanning = false;
         scanBtn.textContent = "開始掃描";
         scanBox.style.display = "none";
@@ -179,101 +179,130 @@
 
     async function startScan() {
         if (isScanning) {
-            await stopAll();
-            status.textContent = "已停止";
+            stopScanning();
+            status.textContent = "已停止掃描";
+            status.className = "info";
             return;
         }
 
-        await stopAll();
-
+        // 開啟相機（如果還沒開）
         if (!stream) {
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" }
-            });
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" }
+                });
+                camera.srcObject = stream;
+                await camera.play();
+            } catch (err) {
+                status.textContent = "無法開啟相機：" + err.message;
+                status.className = "error";
+                return;
+            }
         }
 
-        camera.srcObject = stream;
-        camera.style.display = "block";
-        await camera.play();
-
+        // 顯示掃描框
         scanBox.style.display = "block";
 
+        // 初始化 Quagga（關鍵修改：使用現有的 video 元素）
         Quagga.init({
             inputStream: {
                 name: "Live",
                 type: "LiveStream",
-                target: document.getElementById("interactive"),
-                constraints: { video: true }
+                target: camera,                    // 使用你的 video 元素
+                constraints: {
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: "environment"
+                }
             },
-            decoder: { readers: getReader() }
-        }, err => {
-            if (err) { status.textContent = "啟動失敗：" + err; return; }
+            decoder: {
+                readers: getReader()
+            },
+            locate: true
+        }, function (err) {
+            if (err) {
+                console.error(err);
+                status.textContent = "掃描器啟動失敗：" + err;
+                status.className = "error";
+                scanBox.style.display = "none";
+                return;
+            }
+
             Quagga.start();
             isScanning = true;
-            scanBtn.textContent = "掃描中...";
-            status.textContent = "掃描中 → 對準紅框";
+            scanBtn.textContent = "停止掃描";
+            status.textContent = "掃描中 → 請對準紅框";
+            status.className = "info";
         });
 
-        Quagga.onDetected(async res => {
+        // 條碼辨識成功事件
+        Quagga.onDetected(function (res) {
             const code = res.codeResult.code;
-            if (code !== lastBarcode) {
+            if (code && code !== lastBarcode) {
                 lastBarcode = code;
                 currentSuffix = "A";
                 updateName();
 
-                Quagga.stop();
-                stopAll();
+                stopScanning();  // 只停止掃描，不關相機
 
-                status.textContent = "成功：" + code + " → 可拍照";
+                status.textContent = "辨識成功： " + code;
                 status.className = "success";
             }
         });
     }
 
-    function updateName() {
-        const base = manualName.value.trim() || lastBarcode || "未命名";
-        currentName.value = base + currentSuffix;
-    }
-
+    // 拍照按鈕
     captureBtn.onclick = async () => {
-        if (!stream) { status.textContent = "請先開啟相機"; return; }
+        if (!stream) {
+            status.textContent = "請先開啟相機";
+            status.className = "error";
+            return;
+        }
+
         const canvas = document.createElement("canvas");
         canvas.width = camera.videoWidth;
         canvas.height = camera.videoHeight;
         const ctx = canvas.getContext("2d");
         ctx.drawImage(camera, 0, 0);
-        
+
         const base = manualName.value.trim() || lastBarcode || "未命名";
         const fileName = base + currentSuffix;
 
-        canvas.toBlob(b => {
+        canvas.toBlob(blob => {
             const a = document.createElement("a");
-            a.href = URL.createObjectURL(b);
+            a.href = URL.createObjectURL(blob);
             a.download = fileName + ".jpg";
             a.click();
-            currentSuffix = String.fromCharCode(currentSuffix.charCodeAt(0)+1);
+
+            // 自動切換下一個後綴
+            currentSuffix = String.fromCharCode(currentSuffix.charCodeAt(0) + 1);
             updateName();
-            status.textContent = "已儲存："+fileName+".jpg";
-        });
+
+            status.textContent = "已儲存：" + fileName + ".jpg";
+            status.className = "success";
+        }, "image/jpeg", 0.95);
     };
 
+    // 重置按鈕（完全關閉相機）
     resetBtn.onclick = async () => {
-        await stopAll();
+        stopScanning();
         if (stream) {
-            stream.getTracks().forEach(t => t.stop());
+            stream.getTracks().forEach(track => track.stop());
             stream = null;
         }
-        camera.style.display = "none";
-        status.textContent = "已重置 → 點開始掃描";
+        camera.srcObject = null;
+        status.textContent = "已重置相機 → 請重新開始掃描";
+        status.className = "info";
     };
 
-    scanBtn.onclick = startScan;
-
+    // 手動檔名改變時更新
     manualName.addEventListener("input", () => {
         currentSuffix = "A";
         updateName();
     });
 
+    // 初始化
+    scanBtn.onclick = startScan;
     updateName();
 </script>
 </body>
