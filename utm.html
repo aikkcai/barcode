@@ -33,23 +33,25 @@
             overflow: hidden;
             margin-bottom: 15px;
         }
-        #interactive.viewport {
-            position: absolute;
-            top: 0;
-            left: 0;
+        #camera {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+        }
+        #interactive {
             width: 100%;
             height: 100%;
         }
-        /* 紅色掃描框 */
         .scan-box {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            width: 200px;
-            height: 100px;
+            width: 220px;
+            height: 110px;
             border: 3px solid #ff0000;
-            box-shadow: 0 0 0 1000px rgba(0,0,0,0.3);
+            box-shadow: 0 0 0 1000px rgba(0,0,0,0.4);
             z-index: 10;
             pointer-events: none;
         }
@@ -83,18 +85,9 @@
             font-weight: bold;
             cursor: pointer;
         }
-        #scanBtn {
-            background: #2196F3;
-            color: white;
-        }
-        #captureBtn {
-            background: #4CAF50;
-            color: white;
-        }
-        #resetBtn {
-            background: #ff9800;
-            color: white;
-        }
+        #scanBtn { background: #2196F3; color: white; }
+        #captureBtn { background: #4CAF50; color: white; }
+        #resetBtn { background: #ff9800; color: white; }
         #status {
             text-align: center;
             padding: 10px;
@@ -102,18 +95,9 @@
             margin-bottom: 10px;
             font-weight: bold;
         }
-        .success {
-            background: #e8f5e9;
-            color: #2e7d32;
-        }
-        .info {
-            background: #e3f2fd;
-            color: #1565c0;
-        }
-        .error {
-            background: #ffebee;
-            color: #c62828;
-        }
+        .success { background: #e8f5e9; color: #2e7d32; }
+        .info { background: #e3f2fd; color: #1565c0; }
+        .error { background: #ffebee; color: #c62828; }
     </style>
 </head>
 <body>
@@ -121,30 +105,30 @@
     <h2 class="title">條碼辨識 · 拍照自動命名</h2>
 
     <div class="scan-area">
-        <div id="interactive" class="viewport"></div>
-        <!-- 紅色掃描框 -->
+        <video id="camera" autoplay playsinline></video>
+        <div id="interactive"></div>
         <div class="scan-box"></div>
     </div>
 
-    <div id="status" class="info">點擊開始掃描，對準紅框掃條碼</div>
+    <div id="status" class="info">點開始掃描 → 對準紅框</div>
 
     <div class="input-group">
         <label>條碼類型</label>
         <select id="barcodeType">
-            <option value="code128" selected>CODE-128 (預設)</option>
+            <option value="code128" selected>CODE-128</option>
             <option value="ean13">EAN-13</option>
             <option value="ean8">EAN-8</option>
         </select>
     </div>
 
     <div class="input-group">
-        <label>手動檔名（優先於條碼）</label>
+        <label>手動檔名</label>
         <input type="text" id="manualName" placeholder="輸入自訂檔名">
     </div>
 
     <div class="input-group">
-        <label>目前使用名稱</label>
-        <input type="text" id="currentName" readonly placeholder="掃描條碼或輸入名稱">
+        <label>目前名稱</label>
+        <input type="text" id="currentName" readonly>
     </div>
 
     <div class="btn-group">
@@ -159,141 +143,120 @@
     let lastBarcode = "";
     let currentSuffix = "A";
     let isScanning = false;
-    let cameraStream = null;
+    let stream = null;
 
+    const camera = document.getElementById("camera");
     const scanBtn = document.getElementById("scanBtn");
     const captureBtn = document.getElementById("captureBtn");
     const resetBtn = document.getElementById("resetBtn");
-    const manualNameInput = document.getElementById("manualName");
-    const currentNameInput = document.getElementById("currentName");
-    const statusText = document.getElementById("status");
-    const barcodeTypeSelect = document.getElementById("barcodeType");
+    const manualName = document.getElementById("manualName");
+    const currentName = document.getElementById("currentName");
+    const status = document.getElementById("status");
+    const barcodeType = document.getElementById("barcodeType");
 
-    function getSelectedReader() {
-        const type = barcodeTypeSelect.value;
-        if (type === "code128") return ["code_128_reader"];
-        if (type === "ean13") return ["ean_reader"];
-        if (type === "ean8") return ["ean_8_reader"];
+    function getReader() {
+        const t = barcodeType.value;
+        if (t === "code128") return ["code_128_reader"];
+        if (t === "ean13") return ["ean_reader"];
+        if (t === "ean8") return ["ean_8_reader"];
         return ["code_128_reader"];
     }
 
-    // 重置相機（解決黑屏）
-    function resetCamera() {
-        try {
-            Quagga.stop();
-            if (cameraStream) {
-                cameraStream.getTracks().forEach(track => track.stop());
-            }
-        } catch (e) {}
+    async function stopAll() {
+        try { Quagga.stop(); } catch (e) {}
+        if (stream) stream.getTracks().forEach(t => t.stop());
         isScanning = false;
         scanBtn.textContent = "開始掃描";
-        statusText.textContent = "已重置 → 點開始掃描";
-        statusText.className = "info";
-        
-        const viewport = document.querySelector('#interactive');
-        if (viewport) viewport.innerHTML = '';
+        camera.style.display = "none";
+        document.getElementById("interactive").innerHTML = "";
     }
 
-    // 掃描條碼
-    function startScan() {
+    async function startScan() {
         if (isScanning) {
-            resetCamera();
+            await stopAll();
+            status.textContent = "已停止";
             return;
         }
 
-        resetCamera();
+        await stopAll();
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        
+        camera.srcObject = stream;
+        camera.style.display = "block";
+        await camera.play();
 
         Quagga.init({
             inputStream: {
                 name: "Live",
                 type: "LiveStream",
-                target: document.querySelector('#interactive'),
-                constraints: { facingMode: "environment" },
+                target: document.getElementById("interactive"),
+                constraints: { video: true }
             },
-            decoder: { readers: getSelectedReader() },
-            locator: { patchSize: "medium", halfSample: true }
-        }, function (err) {
-            if (err) {
-                statusText.textContent = "相機異常：" + err;
-                statusText.className = "error";
-                return;
-            }
+            decoder: { readers: getReader() }
+        }, err => {
+            if (err) { status.textContent = "啟動失敗：" + err; return; }
             Quagga.start();
             isScanning = true;
             scanBtn.textContent = "掃描中...";
-            statusText.textContent = "掃描中 → 對準紅色框";
-            statusText.className = "info";
+            status.textContent = "掃描中 → 對準紅框";
+            status.className = "info";
         });
 
-        // 掃描成功
-        Quagga.onDetected(function (result) {
-            const code = result.codeResult.code;
+        Quagga.onDetected(async res => {
+            const code = res.codeResult.code;
             if (code !== lastBarcode) {
                 lastBarcode = code;
                 currentSuffix = "A";
-                updateCurrentName();
-                
-                statusText.textContent = "掃描成功：" + code + " → 可拍照";
-                statusText.className = "success";
-                
-                // 不關閉相機 → 直接保持畫面變拍照模式
+                updateName();
+                status.textContent = "成功：" + code + " → 可拍照";
+                status.className = "success";
+                Quagga.stop();
                 isScanning = false;
                 scanBtn.textContent = "開始掃描";
             }
         });
     }
 
-    function updateCurrentName() {
-        const baseName = manualNameInput.value.trim() || lastBarcode || "未命名";
-        currentNameInput.value = baseName + currentSuffix;
+    function updateName() {
+        const base = manualName.value.trim() || lastBarcode || "未命名";
+        currentName.value = base + currentSuffix;
     }
 
-    // 拍照
-    captureBtn.addEventListener("click", async function () {
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment" }
-            });
-            const video = document.createElement('video');
-            video.srcObject = stream;
-            await video.play();
+    captureBtn.onclick = async () => {
+        if (!stream) { status.textContent = "請先開啟相機"; return; }
+        const canvas = document.createElement("canvas");
+        canvas.width = camera.videoWidth;
+        canvas.height = camera.videoHeight;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(camera, 0, 0);
+        
+        const base = manualName.value.trim() || lastBarcode || "未命名";
+        const fileName = base + currentSuffix;
 
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0);
+        canvas.toBlob(b => {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(b);
+            a.download = fileName + ".jpg";
+            a.click();
+            currentSuffix = String.fromCharCode(currentSuffix.charCodeAt(0) + 1);
+            updateName();
+            status.textContent = "已儲存：" + fileName + ".jpg";
+        });
+    };
 
-            const baseName = manualNameInput.value.trim() || lastBarcode || "未命名";
-            const fileName = baseName + currentSuffix;
+    resetBtn.onclick = async () => {
+        await stopAll();
+        status.textContent = "已重置 → 點開始掃描";
+    };
 
-            canvas.toBlob(function (blob) {
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = fileName + ".jpg";
-                link.click();
+    scanBtn.onclick = startScan;
 
-                stream.getTracks().forEach(track => track.stop());
-                currentSuffix = String.fromCharCode(currentSuffix.charCodeAt(0) + 1);
-                updateCurrentName();
-
-                statusText.textContent = "儲存：" + fileName + ".jpg";
-                statusText.className = "success";
-            });
-        } catch (err) {
-            statusText.textContent = "拍照失敗";
-            statusText.className = "error";
-        }
+    manualName.addEventListener("input", () => {
+        currentSuffix = "A";
+        updateName();
     });
 
-    // 按鈕
-    scanBtn.addEventListener("click", startScan);
-    resetBtn.addEventListener("click", resetCamera);
-
-    manualNameInput.addEventListener("input", function () {
-        if (this.value.trim()) currentSuffix = "A";
-        updateCurrentName();
-    });
+    updateName();
 </script>
 </body>
 </html>
